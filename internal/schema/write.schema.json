@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tfq/schemas/write.json",
+  "title": "WriteResult",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["path", "action"],
+  "properties": {
+    "path": { "type": "string" },
+    "action": { "type": "string", "enum": ["created", "updated"] }
+  }
+}

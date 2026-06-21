@@ -22,10 +22,22 @@ var HitsSchema []byte
 //go:embed report.schema.json
 var ReportSchema []byte
 
+//go:embed list.schema.json
+var ListSchema []byte
+
+//go:embed record.schema.json
+var RecordSchema []byte
+
+//go:embed write.schema.json
+var WriteSchema []byte
+
 var compiled = mustCompile()
 var compiledEdges = mustCompileNamed("edges.schema.json", EdgesSchema)
 var compiledHits = mustCompileNamed("hits.schema.json", HitsSchema)
 var compiledReport = mustCompileNamed("report.schema.json", ReportSchema)
+var compiledList = mustCompileNamed("list.schema.json", ListSchema)
+var compiledRecord = mustCompileNamed("record.schema.json", RecordSchema)
+var compiledWrite = mustCompileNamed("write.schema.json", WriteSchema)
 
 func mustCompile() *jsonschema.Schema {
 	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(FileVitalsSchema))
@@ -100,3 +112,12 @@ func ValidateHits(hits any) error { return validateAgainst(compiledHits, hits) }
 // ValidateReport validates a validation Report against the embedded schema.
 // Takes any to avoid importing validate (which would create an import cycle).
 func ValidateReport(report any) error { return validateAgainst(compiledReport, report) }
+
+// ValidateList validates list output. Takes any to avoid an import cycle.
+func ValidateList(items any) error { return validateAgainst(compiledList, items) }
+
+// ValidateRecord validates a read Record. Takes any to avoid an import cycle.
+func ValidateRecord(rec any) error { return validateAgainst(compiledRecord, rec) }
+
+// ValidateWrite validates a WriteResult. Takes any to avoid an import cycle.
+func ValidateWrite(w any) error { return validateAgainst(compiledWrite, w) }

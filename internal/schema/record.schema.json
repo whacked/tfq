@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tfq/schemas/record.json",
+  "title": "Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["path", "format", "frontmatter", "body"],
+  "properties": {
+    "path": { "type": "string" },
+    "format": { "type": "string" },
+    "frontmatter": { "type": "object" },
+    "body": { "type": "string" }
+  }
+}
