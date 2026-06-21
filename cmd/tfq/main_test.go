@@ -77,3 +77,24 @@ func TestRunSearch(t *testing.T) {
 		t.Errorf("search output wrong: %s", out)
 	}
 }
+
+func TestRunValidate(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, ".tfq.cue", "status: \"pending\" | \"completed\"\n")
+	mustWrite(t, dir, "ok.md", "---\nstatus: completed\n---\n# ok\n")
+
+	out, code := run([]string{"validate", dir})
+	if code != 0 {
+		t.Fatalf("liberal validate should exit 0, got %d: %s", code, out)
+	}
+	if !contains(out, "\"ok\": true") {
+		t.Errorf("expected ok:true: %s", out)
+	}
+
+	// strict over a bad record exits 1
+	mustWrite(t, dir, "bad.md", "---\nstatus: nope\n---\n# bad\n")
+	_, code = run([]string{"validate", dir, "--strict"})
+	if code != 1 {
+		t.Errorf("strict validate over bad record should exit 1, got %d", code)
+	}
+}

@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"os"
 
+	"tfq/internal/cueschema"
 	"tfq/internal/engine"
 	"tfq/internal/graph"
 	"tfq/internal/scan"
 	"tfq/internal/search"
+	"tfq/internal/validate"
 )
 
 // run returns (stdoutText, exitCode). Kept pure for testing; main wires it to os.
@@ -68,6 +70,28 @@ func run(args []string) (string, int) {
 			return "", 1
 		}
 		return mustJSON(hits), 0
+	case "validate":
+		if len(args) < 2 || len(args) > 3 {
+			return usage(), 2
+		}
+		strict := false
+		dir := args[1]
+		if len(args) == 3 {
+			if args[2] != "--strict" {
+				return usage(), 2
+			}
+			strict = true
+		}
+		rep, err := validate.Run(dir, strict)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "tfq: "+err.Error())
+			return "", 1
+		}
+		code := 0
+		if !rep.OK {
+			code = 1
+		}
+		return mustJSON(rep), code
 	default:
 		return usage(), 2
 	}
@@ -78,7 +102,19 @@ func buildGraph(dir string) (*graph.Graph, error) {
 	if err != nil {
 		return nil, err
 	}
-	return graph.Build(recs, graph.DefaultOptions()), nil
+	opts := graph.DefaultOptions()
+	if path, ok := cueschema.Find(dir); ok {
+		if s, lerr := cueschema.Load(path); lerr == nil {
+			if efs := s.EdgeFields(); len(efs) > 0 {
+				names := make([]string, len(efs))
+				for i, e := range efs {
+					names[i] = e.Name
+				}
+				opts = graph.Options{FrontmatterEdgeFields: names}
+			}
+		}
+	}
+	return graph.Build(recs, opts), nil
 }
 
 func mustJSON(v any) string {
@@ -90,7 +126,7 @@ func mustJSON(v any) string {
 }
 
 func usage() string {
-	return "usage: tfq <inspect <file> | graph <dir> | backlinks <ref> <dir> | next <dir> | search <query> <dir>>"
+	return "usage: tfq <inspect <file> | graph <dir> | backlinks <ref> <dir> | next <dir> | search <query> <dir> | validate <dir> [--strict]>"
 }
 
 func main() {
