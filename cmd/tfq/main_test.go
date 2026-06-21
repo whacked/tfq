@@ -118,6 +118,52 @@ func TestRunHelp(t *testing.T) {
 	}
 }
 
+func TestRunNewAndSetAndListAndRead(t *testing.T) {
+	dir := t.TempDir()
+
+	// new task
+	out, code := run([]string{"new", "do-thing", dir, "--template", "task"})
+	if code != 0 {
+		t.Fatalf("new exit %d: %s", code, out)
+	}
+	if !contains(out, "\"action\": \"created\"") {
+		t.Errorf("new output: %s", out)
+	}
+
+	// list shows it as pending
+	out, code = run([]string{"list", dir, "--status", "pending"})
+	if code != 0 {
+		t.Fatalf("list exit %d: %s", code, out)
+	}
+	if !contains(out, "do-thing") {
+		t.Errorf("list output: %s", out)
+	}
+
+	// set it to completed
+	out, code = run([]string{"set", "do-thing", dir, "--status", "completed"})
+	if code != 0 {
+		t.Fatalf("set exit %d: %s", code, out)
+	}
+	if !contains(out, "\"action\": \"updated\"") {
+		t.Errorf("set output: %s", out)
+	}
+
+	// now no pending tasks
+	out, _ = run([]string{"list", dir, "--status", "pending"})
+	if contains(out, "do-thing") {
+		t.Errorf("task should no longer be pending: %s", out)
+	}
+
+	// read --raw shows the body
+	out, code = run([]string{"read", "do-thing", dir, "--raw"})
+	if code != 0 {
+		t.Fatalf("read exit %d: %s", code, out)
+	}
+	if !contains(out, "do thing") {
+		t.Errorf("read --raw output: %s", out)
+	}
+}
+
 func TestRunValidate(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, dir, ".tfq.cue", "status: \"pending\" | \"completed\"\n")

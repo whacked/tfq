@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"tfq/internal/cueschema"
 	"tfq/internal/engine"
 	"tfq/internal/graph"
+	"tfq/internal/layout"
+	"tfq/internal/query"
 	"tfq/internal/scan"
 	"tfq/internal/search"
+	"tfq/internal/store"
 	"tfq/internal/validate"
 )
 
@@ -98,6 +102,56 @@ func run(args []string) (string, int) {
 			code = 1
 		}
 		return mustJSON(rep), code
+	case "read":
+		pos, flags, err := partition(rest, map[string]bool{"raw": true})
+		if err != nil || len(pos) != 2 {
+			return usage(), 2
+		}
+		rec, rerr := query.Read(pos[1], pos[0])
+		if rerr != nil {
+			return errln(rerr), 1
+		}
+		if flags["raw"] == "true" {
+			return rec.Body, 0
+		}
+		return mustJSON(rec), 0
+	case "list":
+		pos, flags, err := partition(rest, nil)
+		if err != nil || len(pos) != 1 {
+			return usage(), 2
+		}
+		items, lerr := query.List(pos[0], query.ListFilters{Status: flags["status"], Tag: flags["tag"], Type: flags["type"]})
+		if lerr != nil {
+			return errln(lerr), 1
+		}
+		return mustJSON(items), 0
+	case "new":
+		pos, flags, fields, _, err := partitionMulti(rest, nil)
+		if err != nil || len(pos) != 2 {
+			return usage(), 2
+		}
+		tmpl := layout.Template(flags["template"])
+		if tmpl == "" {
+			tmpl = layout.TemplateNote
+		}
+		res, nerr := store.New(pos[1], tmpl, pos[0], fields, time.Now(), layout.DefaultConfig())
+		if nerr != nil {
+			return errln(nerr), 1
+		}
+		return mustJSON(res), 0
+	case "set":
+		pos, flags, fields, tags, err := partitionMulti(rest, nil)
+		if err != nil || len(pos) != 2 {
+			return usage(), 2
+		}
+		if s, ok := flags["status"]; ok {
+			fields["status"] = s
+		}
+		res, serr := store.Set(pos[1], pos[0], fields, tags)
+		if serr != nil {
+			return errln(serr), 1
+		}
+		return mustJSON(res), 0
 	default:
 		return usage(), 2
 	}
@@ -143,15 +197,17 @@ func usage() string {
 		"usage: tfq <verb> [args] [flags]",
 		"",
 		"  inspect <file>                    comprehensive FileVitals JSON for one file",
+		"  read <ref> <dir> [--raw]          a record (frontmatter + body), or --raw body only",
 		"  search <query> <dir> [--type T] [--tag G]   ripgrep search + frontmatter filters",
+		"  list <dir> [--status S] [--tag T] [--type T]   record summaries, filtered",
 		"  links <ref> <dir>                 outgoing edges from a record",
 		"  backlinks <ref> <dir>             records that reference <ref>",
 		"  graph <dir>                       all resolved edges in the collection",
 		"  next <dir>                        tasks ready to work on (deps satisfied)",
+		"  new <slug> <dir> [--template note|task] [--field k=v ...]   create a record",
+		"  set <ref> <dir> [--status S] [--add-tag T ...] [--field k=v ...]   mutate frontmatter",
 		"  validate <dir> [--strict]         validate vs .tfq.cue + edge resolution",
 		"  help                              this message",
-		"",
-		"reserved (not yet implemented): read, new, list, set",
 	}, "\n")
 }
 

@@ -39,6 +39,18 @@ func TestResolveByKeys(t *testing.T) {
 	}
 }
 
+func TestResolveStripsSeqPrefix(t *testing.T) {
+	// a task file NNN-slug.md should resolve by its bare slug too
+	recs := []model.FileVitals{
+		recPath("2026/06/001-do-thing.md", map[string]any{"id": "001"}),
+	}
+	g := Build(recs, DefaultOptions())
+	got, ok := g.Resolve("do-thing")
+	if !ok || got != "2026/06/001-do-thing.md" {
+		t.Errorf("Resolve(do-thing) = %q ok=%v", got, ok)
+	}
+}
+
 func TestEdgesResolveAndDangle(t *testing.T) {
 	a := recPath("a.md", map[string]any{"slug": "a"},
 		model.Link{Kind: model.LinkWiki, Target: "b", Line: 1, Col: 1})

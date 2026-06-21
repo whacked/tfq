@@ -2,11 +2,17 @@ package graph
 
 import (
 	"path"
+	"regexp"
 	"sort"
 	"strings"
 
 	"tfq/internal/model"
 )
+
+var seqPrefix = regexp.MustCompile(`^\d+-`)
+
+// stripSeqPrefix removes a leading "NNN-" sequence prefix (task filenames).
+func stripSeqPrefix(s string) string { return seqPrefix.ReplaceAllString(s, "") }
 
 // Edge is a typed, possibly-dangling reference between records.
 type Edge struct {
@@ -65,7 +71,11 @@ func Build(records []model.FileVitals, opts Options) *Graph {
 	}
 	for _, r := range records {
 		addKey(r.Path, r.Path)
-		addKey(baseNoExt(r.Path), r.Path)
+		base := baseNoExt(r.Path)
+		addKey(base, r.Path)
+		if s := stripSeqPrefix(base); s != base {
+			addKey(s, r.Path)
+		}
 		for _, fk := range []string{"id", "slug", "title"} {
 			if s, ok := fmString(r.Frontmatter, fk); ok {
 				addKey(s, r.Path)
