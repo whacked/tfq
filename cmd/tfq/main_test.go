@@ -78,6 +78,46 @@ func TestRunSearch(t *testing.T) {
 	}
 }
 
+func TestRunSearchFilters(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "a.md", "---\ntype: note\n---\nhello world\n")
+	mustWrite(t, dir, "b.md", "---\ntype: log\n---\nhello again\n")
+
+	out, code := run([]string{"search", "hello", dir, "--type", "log"})
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+	if !contains(out, "b.md") || contains(out, "a.md") {
+		t.Errorf("--type filter not applied: %s", out)
+	}
+}
+
+func TestRunLinks(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "a.md", "---\nslug: a\n---\nsee [[b]]\n")
+	mustWrite(t, dir, "b.md", "---\nslug: b\n---\n# b\n")
+
+	out, code := run([]string{"links", "a", dir})
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, out)
+	}
+	if !contains(out, "\"to\": \"b.md\"") {
+		t.Errorf("links should show forward edge to b.md: %s", out)
+	}
+}
+
+func TestRunHelp(t *testing.T) {
+	out, code := run([]string{"help"})
+	if code != 0 {
+		t.Errorf("help should exit 0, got %d", code)
+	}
+	for _, verb := range []string{"inspect", "search", "links", "backlinks", "graph", "next", "validate"} {
+		if !contains(out, verb) {
+			t.Errorf("help missing verb %q", verb)
+		}
+	}
+}
+
 func TestRunValidate(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, dir, ".tfq.cue", "status: \"pending\" | \"completed\"\n")

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"tfq/internal/cueschema"
 	"tfq/internal/engine"
@@ -18,74 +19,79 @@ func run(args []string) (string, int) {
 	if len(args) < 1 {
 		return usage(), 2
 	}
-	switch args[0] {
+	verb, rest := args[0], args[1:]
+	switch verb {
+	case "help":
+		return usage(), 0
 	case "inspect":
-		if len(args) != 2 {
+		pos, _, err := partition(rest, nil)
+		if err != nil || len(pos) != 1 {
 			return usage(), 2
 		}
-		fv, err := engine.Inspect(args[1])
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "tfq: "+err.Error())
-			return "", 1
+		fv, ierr := engine.Inspect(pos[0])
+		if ierr != nil {
+			return errln(ierr), 1
 		}
 		return mustJSON(fv), 0
-	case "graph":
-		if len(args) != 2 {
+	case "search":
+		pos, flags, err := partition(rest, nil)
+		if err != nil || len(pos) != 2 {
 			return usage(), 2
 		}
-		g, err := buildGraph(args[1])
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "tfq: "+err.Error())
-			return "", 1
+		hits, _, serr := search.Search(pos[1], pos[0], search.Filters{Type: flags["type"], Tag: flags["tag"]})
+		if serr != nil {
+			return errln(serr), 1
+		}
+		return mustJSON(hits), 0
+	case "links":
+		pos, _, err := partition(rest, nil)
+		if err != nil || len(pos) != 2 {
+			return usage(), 2
+		}
+		g, gerr := buildGraph(pos[1])
+		if gerr != nil {
+			return errln(gerr), 1
+		}
+		return mustJSON(g.Forward(pos[0])), 0
+	case "backlinks":
+		pos, _, err := partition(rest, nil)
+		if err != nil || len(pos) != 2 {
+			return usage(), 2
+		}
+		g, gerr := buildGraph(pos[1])
+		if gerr != nil {
+			return errln(gerr), 1
+		}
+		return mustJSON(g.Backlinks(pos[0])), 0
+	case "graph":
+		pos, _, err := partition(rest, nil)
+		if err != nil || len(pos) != 1 {
+			return usage(), 2
+		}
+		g, gerr := buildGraph(pos[0])
+		if gerr != nil {
+			return errln(gerr), 1
 		}
 		return mustJSON(g.Edges()), 0
-	case "backlinks":
-		if len(args) != 3 {
-			return usage(), 2
-		}
-		g, err := buildGraph(args[2])
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "tfq: "+err.Error())
-			return "", 1
-		}
-		return mustJSON(g.Backlinks(args[1])), 0
 	case "next":
-		if len(args) != 2 {
+		pos, _, err := partition(rest, nil)
+		if err != nil || len(pos) != 1 {
 			return usage(), 2
 		}
-		g, err := buildGraph(args[1])
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "tfq: "+err.Error())
-			return "", 1
+		g, gerr := buildGraph(pos[0])
+		if gerr != nil {
+			return errln(gerr), 1
 		}
 		ready, _ := g.Next(graph.DefaultNextOptions())
 		return mustJSON(ready), 0
-	case "search":
-		if len(args) != 3 {
-			return usage(), 2
-		}
-		hits, _, err := search.Search(args[2], args[1], search.Filters{})
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "tfq: "+err.Error())
-			return "", 1
-		}
-		return mustJSON(hits), 0
 	case "validate":
-		if len(args) < 2 || len(args) > 3 {
+		pos, flags, err := partition(rest, map[string]bool{"strict": true})
+		if err != nil || len(pos) != 1 {
 			return usage(), 2
 		}
-		strict := false
-		dir := args[1]
-		if len(args) == 3 {
-			if args[2] != "--strict" {
-				return usage(), 2
-			}
-			strict = true
-		}
-		rep, err := validate.Run(dir, strict)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "tfq: "+err.Error())
-			return "", 1
+		rep, verr := validate.Run(pos[0], flags["strict"] == "true")
+		if verr != nil {
+			return errln(verr), 1
 		}
 		code := 0
 		if !rep.OK {
@@ -117,6 +123,11 @@ func buildGraph(dir string) (*graph.Graph, error) {
 	return graph.Build(recs, opts), nil
 }
 
+func errln(err error) string {
+	fmt.Fprintln(os.Stderr, "tfq: "+err.Error())
+	return ""
+}
+
 func mustJSON(v any) string {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
@@ -126,7 +137,22 @@ func mustJSON(v any) string {
 }
 
 func usage() string {
-	return "usage: tfq <inspect <file> | graph <dir> | backlinks <ref> <dir> | next <dir> | search <query> <dir> | validate <dir> [--strict]>"
+	return strings.Join([]string{
+		"tfq — query frontmatter'd text files",
+		"",
+		"usage: tfq <verb> [args] [flags]",
+		"",
+		"  inspect <file>                    comprehensive FileVitals JSON for one file",
+		"  search <query> <dir> [--type T] [--tag G]   ripgrep search + frontmatter filters",
+		"  links <ref> <dir>                 outgoing edges from a record",
+		"  backlinks <ref> <dir>             records that reference <ref>",
+		"  graph <dir>                       all resolved edges in the collection",
+		"  next <dir>                        tasks ready to work on (deps satisfied)",
+		"  validate <dir> [--strict]         validate vs .tfq.cue + edge resolution",
+		"  help                              this message",
+		"",
+		"reserved (not yet implemented): read, new, list, set",
+	}, "\n")
 }
 
 func main() {
