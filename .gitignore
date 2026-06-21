@@ -1,0 +1,13 @@
+# Local convenience symlink to the agent-resources repo (absolute path, machine-specific)
+/external/
+
+# Go build artifacts
+/tfq
+/bin/
+*.test
+*.out
+coverage.*
+
+# OS / editor cruft
+.DS_Store
+*.swp
