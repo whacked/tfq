@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tfq/schemas/filevitals.json",
+  "title": "FileVitals",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["path", "ext", "format", "frontmatter", "headings", "links", "markers", "warnings"],
+  "properties": {
+    "path": { "type": "string" },
+    "ext": { "type": "string" },
+    "format": { "type": "string", "enum": ["markdown", "org", "text"] },
+    "frontmatter": { "type": "object" },
+    "headings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["level", "text", "line"],
+        "properties": {
+          "level": { "type": "integer", "minimum": 1 },
+          "text": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "target", "label", "line", "col"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["markdown", "wiki", "embed", "org", "autolink", "bare-url"] },
+          "target": { "type": "string" },
+          "label": { "type": ["string", "null"] },
+          "line": { "type": "integer", "minimum": 1 },
+          "col": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "markers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "value", "line", "col"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["hashtag", "org-tag", "angle", "double-angle"] },
+          "value": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "col": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["module", "message"],
+        "properties": {
+          "module": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      }
+    }
+  }
+}
