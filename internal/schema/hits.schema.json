@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tfq/schemas/hits.json",
+  "title": "Hits",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["path", "line", "text"],
+    "properties": {
+      "path": { "type": "string" },
+      "line": { "type": "integer", "minimum": 1 },
+      "text": { "type": "string" }
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tfq/schemas/edges.json",
+  "title": "Edges",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["from", "kind", "raw", "to"],
+    "properties": {
+      "from": { "type": "string" },
+      "kind": { "type": "string" },
+      "raw": { "type": "string" },
+      "to": { "type": "string" }
+    }
+  }
+}

@@ -13,7 +13,15 @@ import (
 //go:embed filevitals.schema.json
 var FileVitalsSchema []byte
 
+//go:embed edges.schema.json
+var EdgesSchema []byte
+
+//go:embed hits.schema.json
+var HitsSchema []byte
+
 var compiled = mustCompile()
+var compiledEdges = mustCompileNamed("edges.schema.json", EdgesSchema)
+var compiledHits = mustCompileNamed("hits.schema.json", HitsSchema)
 
 func mustCompile() *jsonschema.Schema {
 	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(FileVitalsSchema))
@@ -48,3 +56,39 @@ func ValidateFileVitals(fv model.FileVitals) error {
 	}
 	return validateJSON(b)
 }
+
+func mustCompileNamed(name string, src []byte) *jsonschema.Schema {
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(src))
+	if err != nil {
+		panic(fmt.Sprintf("%s not valid json: %v", name, err))
+	}
+	c := jsonschema.NewCompiler()
+	if err := c.AddResource(name, doc); err != nil {
+		panic(err)
+	}
+	s, err := c.Compile(name)
+	if err != nil {
+		panic(err)
+	}
+	return s
+}
+
+func validateAgainst(s *jsonschema.Schema, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	return s.Validate(inst)
+}
+
+// ValidateEdges validates graph edge output against the embedded schema.
+// Takes any to avoid importing graph (which would create an import cycle).
+func ValidateEdges(edges any) error { return validateAgainst(compiledEdges, edges) }
+
+// ValidateHits validates search hit output against the embedded schema.
+// Takes any to avoid importing search (which would create an import cycle).
+func ValidateHits(hits any) error { return validateAgainst(compiledHits, hits) }
