@@ -19,9 +19,13 @@ var EdgesSchema []byte
 //go:embed hits.schema.json
 var HitsSchema []byte
 
+//go:embed report.schema.json
+var ReportSchema []byte
+
 var compiled = mustCompile()
 var compiledEdges = mustCompileNamed("edges.schema.json", EdgesSchema)
 var compiledHits = mustCompileNamed("hits.schema.json", HitsSchema)
+var compiledReport = mustCompileNamed("report.schema.json", ReportSchema)
 
 func mustCompile() *jsonschema.Schema {
 	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(FileVitalsSchema))
@@ -92,3 +96,7 @@ func ValidateEdges(edges any) error { return validateAgainst(compiledEdges, edge
 // ValidateHits validates search hit output against the embedded schema.
 // Takes any to avoid importing search (which would create an import cycle).
 func ValidateHits(hits any) error { return validateAgainst(compiledHits, hits) }
+
+// ValidateReport validates a validation Report against the embedded schema.
+// Takes any to avoid importing validate (which would create an import cycle).
+func ValidateReport(report any) error { return validateAgainst(compiledReport, report) }
