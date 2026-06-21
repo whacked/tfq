@@ -142,6 +142,39 @@ func (g *Graph) Resolve(ref string) (string, bool) {
 	return "", false
 }
 
+// Backlinks returns sorted unique source paths whose edges resolve to ref.
+func (g *Graph) Backlinks(ref string) []string {
+	target, ok := g.Resolve(ref)
+	if !ok {
+		return []string{}
+	}
+	seen := map[string]bool{}
+	out := []string{}
+	for _, e := range g.edges {
+		if e.To == target && !seen[e.From] {
+			seen[e.From] = true
+			out = append(out, e.From)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// Forward returns edges originating from the record ref resolves to.
+func (g *Graph) Forward(ref string) []Edge {
+	src, ok := g.Resolve(ref)
+	if !ok {
+		return []Edge{}
+	}
+	out := []Edge{}
+	for _, e := range g.edges {
+		if e.From == src {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // Edges returns all edges (sorted).
 func (g *Graph) Edges() []Edge { return g.edges }
 
