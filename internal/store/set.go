@@ -19,10 +19,14 @@ func Set(root, ref string, changes map[string]string, addTags []string) (WriteRe
 		return WriteResult{}, err
 	}
 	g := graph.Build(recs, graph.DefaultOptions())
-	rel, ok := g.Resolve(ref)
-	if !ok {
+	cands := g.Candidates(ref)
+	if len(cands) == 0 {
 		return WriteResult{}, fmt.Errorf("no record matches %q", ref)
 	}
+	if len(cands) > 1 {
+		return WriteResult{}, fmt.Errorf("ambiguous reference %q (matches %s)", ref, strings.Join(cands, ", "))
+	}
+	rel := cands[0]
 	full := filepath.Join(root, rel)
 	b, err := os.ReadFile(full)
 	if err != nil {

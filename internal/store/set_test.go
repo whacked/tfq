@@ -57,3 +57,17 @@ func TestSetUnknownRef(t *testing.T) {
 		t.Error("unknown ref should error")
 	}
 }
+
+func TestSetAmbiguousRefIsError(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.md"), []byte("---\nslug: dup\nstatus: pending\n---\n# a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "b.md"), []byte("---\ntitle: dup\nstatus: pending\n---\n# b\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Set(root, "dup", map[string]string{"status": "done"}, nil)
+	if err == nil || !strings.Contains(err.Error(), "ambiguous") {
+		t.Fatalf("expected ambiguous-reference error, got %v", err)
+	}
+}
