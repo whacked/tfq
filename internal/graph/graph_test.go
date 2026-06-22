@@ -87,3 +87,29 @@ func TestEdgesResolveAndDangle(t *testing.T) {
 		t.Errorf("expected a dangling-edge warning for parent: ghost")
 	}
 }
+
+func TestCandidatesAmbiguous(t *testing.T) {
+	recs := []model.FileVitals{
+		{Path: "a.md", Frontmatter: map[string]any{"slug": "dup"}},
+		{Path: "b.md", Frontmatter: map[string]any{"title": "dup"}},
+	}
+	g := Build(recs, DefaultOptions())
+	got := g.Candidates("dup")
+	if len(got) != 2 {
+		t.Fatalf("Candidates(dup) = %#v, want 2 matches", got)
+	}
+}
+
+func TestCandidatesUnique(t *testing.T) {
+	recs := []model.FileVitals{
+		{Path: "a.md", Frontmatter: map[string]any{"slug": "x"}},
+		{Path: "b.md", Frontmatter: map[string]any{"slug": "y"}},
+	}
+	g := Build(recs, DefaultOptions())
+	if got := g.Candidates("x"); len(got) != 1 || got[0] != "a.md" {
+		t.Errorf("Candidates(x) = %#v, want [a.md]", got)
+	}
+	if got := g.Candidates("ghost"); len(got) != 0 {
+		t.Errorf("Candidates(ghost) = %#v, want empty", got)
+	}
+}

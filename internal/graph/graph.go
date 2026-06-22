@@ -152,6 +152,37 @@ func (g *Graph) Resolve(ref string) (string, bool) {
 	return "", false
 }
 
+// Candidates returns every distinct record path the ref could resolve to
+// (path / basename / seq-stripped basename / id|slug|title). Unlike Resolve
+// (first-writer-wins), it surfaces ambiguity so writers can reject it.
+func (g *Graph) Candidates(ref string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, r := range g.records {
+		base := baseNoExt(r.Path)
+		keys := []string{r.Path, base}
+		if s := stripSeqPrefix(base); s != base {
+			keys = append(keys, s)
+		}
+		for _, fk := range []string{"id", "slug", "title"} {
+			if s, ok := fmString(r.Frontmatter, fk); ok {
+				keys = append(keys, s)
+			}
+		}
+		for _, k := range keys {
+			if k == ref || k == baseNoExt(ref) {
+				if !seen[r.Path] {
+					seen[r.Path] = true
+					out = append(out, r.Path)
+				}
+				break
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // Backlinks returns sorted unique source paths whose edges resolve to ref.
 func (g *Graph) Backlinks(ref string) []string {
 	target, ok := g.Resolve(ref)
