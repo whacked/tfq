@@ -27,18 +27,23 @@ Build & run:
 ```bash
 make build          # injects version via -ldflags; produces ./tfq
 make test           # go test ./...
-./tfq help          # the full verb surface
-./tfq version       # yyyymmdd.<nth-commit-of-day>.<short-hash>
+./tfq --help        # the full flag surface
+./tfq --version     # yyyymmdd.<nth-commit-of-day>.<short-hash>
 ```
 
-The verb surface (all query output is JSON):
+The CLI is **flag-based and grep-like** — `tfq [OPTIONS] [SELECTOR...]`, default
+mode search, human output by default with `--json` as the universal machine
+interface:
 
 ```
-inspect · read · search · list · links · backlinks · graph · next
-new · set · validate · version · help
+(default search) · --list · --show · --links · --tags · --next
+--new · --set · --done · --validate · --inspect · --graph · --version · --help
 ```
 
-See `VOCABULARY.md` for the authoritative per-verb reference.
+See `VOCABULARY.md` for the authoritative reference. (The original cut shipped
+flat verbs — `search <q> <dir>`, `read <ref> <dir>`, … — which `VOCABULARY-NEW.md`
+critiqued; the switchover to flags is recorded in
+`docs/superpowers/specs/2026-06-22-tfq-flag-interaction-design.md`.)
 
 ---
 
@@ -92,8 +97,9 @@ them as invariants unless explicitly revisited.
 | Formats | **Multi-format by extension** | Not Markdown-only; `.md`/`.org` seeded, unknown handled liberally. |
 | Regex dialect | **RE2 only** | The shared dialect of Go `regexp`, ripgrep, *and* CUE's `=~`. One dialect everywhere; extractors are ripgrep-portable. |
 | Semantic search | **Out, permanently** | A separate complete program (embeddings) owns it. `ck` stays separate; `cpd` untouched. |
-| CLI grammar | **Flat verbs** | Truest to the unified "everything is a record" model; type comes from schema/template, not the command. |
-| Vocabulary timing | **Deferred until core solid** | Built read-only core first, finalized verbs later. |
+| CLI grammar | **Flag-based, grep-like** (`tfq [OPTIONS] [SELECTOR...]`) | Default mode search; one selector string; no positional dir (root resolved). Replaced the original flat verbs after `VOCABULARY-NEW.md`; the unified record model is preserved, type still comes from schema/template. |
+| Output default | **Human, `--json` opt-in** | Ripgrep-style default for interactive use; `--json` emits the same per-mode engine types (schema-gated) for tooling. |
+| Vocabulary timing | **Built read-only core first** | Verbs finalized, then switched to the flag model once the engine was solid. |
 | Path/sharding/ID policy | **Centralized config seam** (`internal/layout`) | Owner directive: "make the path config logic high up so it's a global config" for future user-supplied rules. Defaults replicate agent-resources conventions. |
 | Writes | **Preserve body + key order** | `set` uses a `yaml.Node` round-trip, never a map re-serialize. |
 
@@ -123,10 +129,11 @@ built by resolving edge targets against a **multi-key index** of all records.
 | `cueschema` | Load `.tfq.cue`, extract `@edge`, validate frontmatter | `Load`, `Find`, `EdgeFields`, `Validate` |
 | `validate` | Assemble a liberal/strict `Report` over a dir | `Run(root, strict)` |
 | `layout` | **Path/sharding/ID config seam** | `Config`, `DefaultConfig`, `RelPath`, `NextSequence` |
-| `query` | Read-only `List` (filtered) + `Read` (ref→record+body) | `List`, `Read` |
-| `store` | Writes: create + frontmatter mutation | `New`, `Set`, `WriteResult` |
+| `query` | Read-only `List`/`Read` + `Summarize`, tag index (`Tags`, `TagGroups`) | `List`, `Read`, `Summarize`, `Tags`, `TagGroups` |
+| `store` | Writes: create + frontmatter mutation (ambiguous ref = hard error) | `New`, `Set`, `WriteResult` |
 | `schema` | Embedded JSON Schemas + validators (test gate) | `Validate*` (one per mode) |
-| `cmd/tfq` | The CLI: flat-verb dispatch + flags-anywhere parser | `run`, `partition`, `partitionMulti`, `version` |
+| `rootdir` | Collection-root resolution (flag/env/ancestor/cwd) | `Resolve` |
+| `cmd/tfq` | The CLI: flag parser (`parse.go`) → mode dispatch (`main.go`) → human formatters (`format.go`); root via `root.go` | `run`, `parse`, `Invocation`, `format*`, `version` |
 
 ### Data flow
 
@@ -179,7 +186,7 @@ they parsed plus `[]model.Warning`. Only true I/O errors propagate from
   frontmatter fields are graph edges. `cueschema.EdgeFields()` feeds these into
   `graph.Options` (the CLI/`validate` does the translation so `graph` stays
   CUE-free).
-- `tfq validate <dir>`: **liberal** (findings are `warning`, exit 0).
+- `tfq --validate` (root resolved): **liberal** (findings are `warning`, exit 0).
   `--strict`: findings are `error`, exit 1 if any. Findings = schema violations
   per record + dangling-edge findings from the graph.
 
@@ -239,6 +246,7 @@ Built across five phases, all merged to `main` (plus `version` on a branch):
 | 4a Vocabulary | flat-verb CLI, flags-anywhere parser, `VOCABULARY.md` |
 | 4b Write ops | `layout` seam, `query` (read/list), `store` (new/set, body-preserving) |
 | (branch) | `version` verb + `Makefile` build-time injection |
+| 5 Flag UX | verb→flag switchover: `rootdir`, `parse.go`/`format.go`, `graph.Candidates` (ambiguous-write guard), `query.Tags`/`TagGroups`, human-default output |
 
 **Verified end-to-end** (not just unit-green): a real dependency-aware task
 workflow through the CLI — `new` two tasks, `set` a blocking dependency, `next`
@@ -286,8 +294,13 @@ new/set/validate all exist).
 - **CUE error message dedup.** A single bad enum expands to ~6 "conflicting
   values" findings plus a disjunction summary. Correct but noisy; collapse to one
   finding per field.
-- **Human output format.** Everything is JSON. A `--format human` for `list`/
-  `next` would help interactive use (deliberately skipped — `tfq` is agent-first).
+- **Deep ripgrep flags + structured predicates.** The flag model ships a
+  pragmatic core (`-i`/`-l`/`-c`, `--type`/`--tag`/`--status`/`--limit`). The
+  fuller ripgrep surface (`-S/-F/-w`, context `-A/-B/-C`, `-o/-v`, `--glob`,
+  `--sort`) and metadata predicates (`--where`/`--has`/`--before`) are deferred —
+  see the "Deferred" section of `VOCABULARY.md`.
+- **Human output is shipped.** Human (ripgrep-style) is now the default and
+  `--json` is the machine interface; the formatters live in `cmd/tfq/format.go`.
 - **`version` branch.** `feat/version` is unmerged; merge when ready.
 
 ---
@@ -299,8 +312,10 @@ new/set/validate all exist).
   extractor positions stay absolute to the original file.
 - **Multi-key resolution.** A record is indexed by path, basename, basename with
   a leading `NNN-` stripped (task slugs), and frontmatter `id`/`slug`/`title`.
-  An edge/ref resolves against any key; first-writer-wins on collisions; dangling
-  is a warning, never an error.
+  An edge/ref resolves against any key; first-writer-wins on collisions for
+  reads/edges; dangling is a warning, never an error. **Writes are stricter:**
+  `store.Set` uses `graph.Candidates` and hard-errors on an ambiguous reference
+  rather than silently picking the first match.
 - **No import cycles in `schema`.** `ValidateEdges/Hits/Report/List/Record/Write`
   take `any` (not the concrete types) so `schema` never imports `graph`/`search`/
   `validate`/`query`/`store`. The *test* files import them; production code does not.
@@ -339,24 +354,30 @@ make test                  # go test ./...
 make vet                   # go vet ./...
 make version               # print the derived version string
 
-# Inspect one file
-./tfq inspect path/to/note.md
+# Inspect one file (selector is a literal path)
+./tfq --inspect path/to/note.md
 
-# Query a collection (a directory)
-./tfq search "term" ./vault --type note --tag urgent
-./tfq backlinks some-note ./vault
-./tfq graph ./vault
-./tfq next ./vault                       # blocking-aware ready tasks
-./tfq list ./vault --status pending
+# Query a collection (root via --root, $TFQ_ROOT, ancestor .tfq.*, or cwd)
+./tfq --root ./vault "term" --type note --tag urgent   # ripgrep-style hits
+./tfq --root ./vault "term" -l                         # matching files only
+./tfq --root ./vault --backlinks some-note             # inbound links
+./tfq --root ./vault --links some-note                 # outbound + inbound
+./tfq --root ./vault --graph
+./tfq --root ./vault --next                            # blocking-aware ready tasks
+./tfq --root ./vault --status pending                  # list (empty selector)
+./tfq --root ./vault --tags                            # tag index
 
 # Write
-./tfq new my-idea ./vault --template note
-./tfq new ship-it ./vault --template task --field priority=high
-./tfq set ship-it ./vault --status completed --add-tag reviewed
+./tfq --root ./vault --new my-idea --type note
+./tfq --root ./vault --new ship-it --type task --field priority=high
+./tfq --root ./vault --set ship-it --status completed --tag reviewed
+./tfq --root ./vault --done ship-it                    # = --set … --status done
+
+# Add --json to any of the above for machine output.
 
 # Validate against ./vault/.tfq.cue
-./tfq validate ./vault          # liberal, exit 0
-./tfq validate ./vault --strict # errors, exit 1 on any finding
+./tfq --root ./vault --validate          # liberal, exit 0
+./tfq --root ./vault --validate --strict # errors, exit 1 on any finding
 ```
 
 A minimal `.tfq.cue`:
