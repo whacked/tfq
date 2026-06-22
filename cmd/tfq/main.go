@@ -11,6 +11,7 @@ import (
 	"tfq/internal/engine"
 	"tfq/internal/graph"
 	"tfq/internal/layout"
+	"tfq/internal/model"
 	"tfq/internal/query"
 	"tfq/internal/scan"
 	"tfq/internal/search"
@@ -18,93 +19,231 @@ import (
 	"tfq/internal/validate"
 )
 
-// version is the build version, in the form yyyymmdd.<nth-commit-of-day>.<hash>.
-// Overridden at build time via -ldflags "-X main.version=..." (see Makefile);
-// defaults to "dev" for plain `go build`.
+// version is the build version (yyyymmdd.<nth-commit-of-day>.<hash>); overridden
+// at build time via -ldflags (see Makefile). Defaults to "dev".
 var version = "dev"
 
-// run returns (stdoutText, exitCode). Kept pure for testing; main wires it to os.
+type linksJSON struct {
+	Path     string       `json:"path"`
+	Outbound []graph.Edge `json:"outbound,omitempty"`
+	Inbound  []string     `json:"inbound,omitempty"`
+}
+
+// run returns (stdoutText, exitCode). Pure for testing; main wires it to os.
 func run(args []string) (string, int) {
-	if len(args) < 1 {
-		return usage(), 2
-	}
-	verb, rest := args[0], args[1:]
-	switch verb {
-	case "help":
+	if len(args) == 0 {
 		return usage(), 0
-	case "version":
-		return version, 0
-	case "inspect":
-		pos, _, err := partition(rest, nil)
-		if err != nil || len(pos) != 1 {
-			return usage(), 2
+	}
+	inv, err := parse(args)
+	if err != nil {
+		if ue, ok := err.(usageError); ok {
+			return "tfq: " + ue.Error() + "\n\n" + usage(), 2
 		}
-		fv, ierr := engine.Inspect(pos[0])
+		return errln(err), 1
+	}
+
+	switch inv.Mode {
+	case ModeHelp:
+		return usage(), 0
+	case ModeVersion:
+		return version, 0
+	}
+
+	// --inspect operates on the selector as a literal file path.
+	if inv.Mode == ModeInspect {
+		if inv.Selector == "" {
+			return needSelector("--inspect")
+		}
+		fv, ierr := engine.Inspect(inv.Selector)
 		if ierr != nil {
 			return errln(ierr), 1
 		}
-		return mustJSON(fv), 0
-	case "search":
-		pos, flags, err := partition(rest, nil)
-		if err != nil || len(pos) != 2 {
-			return usage(), 2
+		if inv.JSON {
+			return mustJSON(fv), 0
 		}
-		sf := search.Filters{Type: flags["type"]}
-		if t := flags["tag"]; t != "" {
-			sf.Tags = []string{t}
+		return formatInspect(fv), 0
+	}
+
+	root, rerr := resolveRoot(inv.Root)
+	if rerr != nil {
+		return errln(rerr), 1
+	}
+
+	switch inv.Mode {
+	case ModeSearch:
+		if inv.Selector == "" {
+			return dispatchList(root, inv)
 		}
-		hits, _, serr := search.Search(pos[1], pos[0], sf)
+		hits, _, serr := search.Search(root, inv.Selector, search.Filters{
+			Type: inv.Type, Status: inv.Status, Tags: inv.Tags, IgnoreCase: inv.IgnoreCase})
 		if serr != nil {
 			return errln(serr), 1
 		}
-		return mustJSON(hits), 0
-	case "links":
-		pos, _, err := partition(rest, nil)
-		if err != nil || len(pos) != 2 {
-			return usage(), 2
+		if inv.Limit > 0 && len(hits) > inv.Limit {
+			hits = hits[:inv.Limit]
 		}
-		g, gerr := buildGraph(pos[1])
+		if inv.FilesOnly {
+			files := filesOf(hits)
+			if inv.JSON {
+				return mustJSON(files), 0
+			}
+			return strings.Join(files, "\n"), 0
+		}
+		if inv.Count {
+			counts := countsOf(hits)
+			if inv.JSON {
+				return mustJSON(counts), 0
+			}
+			return formatCounts(counts), 0
+		}
+		if inv.JSON {
+			return mustJSON(hits), 0
+		}
+		return formatHits(hits, inv.Heading), 0
+
+	case ModeList:
+		return dispatchList(root, inv)
+
+	case ModeShow:
+		if inv.Selector == "" {
+			return needSelector("--show")
+		}
+		rec, qerr := query.Read(root, inv.Selector)
+		if qerr != nil {
+			return errln(qerr), 1
+		}
+		if inv.JSON {
+			return mustJSON(rec), 0
+		}
+		if inv.Raw {
+			return rec.Body, 0
+		}
+		if inv.Frontmatter {
+			return formatFrontmatterBlock(rec.Frontmatter), 0
+		}
+		return formatRecord(rec), 0
+
+	case ModeLinks:
+		if inv.Selector == "" {
+			return needSelector("--links")
+		}
+		g, gerr := buildGraph(root)
 		if gerr != nil {
 			return errln(gerr), 1
 		}
-		return mustJSON(g.Forward(pos[0])), 0
-	case "backlinks":
-		pos, _, err := partition(rest, nil)
-		if err != nil || len(pos) != 2 {
-			return usage(), 2
+		showOut := inv.Outbound || !inv.Inbound
+		showIn := inv.Inbound || !inv.Outbound
+		out := g.Forward(inv.Selector)
+		in := g.Backlinks(inv.Selector)
+		if inv.FilesOnly {
+			paths := linkedPaths(out, in, showOut, showIn)
+			if inv.JSON {
+				return mustJSON(paths), 0
+			}
+			return strings.Join(paths, "\n"), 0
 		}
-		g, gerr := buildGraph(pos[1])
-		if gerr != nil {
-			return errln(gerr), 1
+		if inv.JSON {
+			p := linksJSON{Path: inv.Selector}
+			if showOut {
+				p.Outbound = out
+			}
+			if showIn {
+				p.Inbound = in
+			}
+			return mustJSON(p), 0
 		}
-		return mustJSON(g.Backlinks(pos[0])), 0
-	case "graph":
-		pos, _, err := partition(rest, nil)
-		if err != nil || len(pos) != 1 {
-			return usage(), 2
+		return formatLinks(inv.Selector, out, in, showOut, showIn), 0
+
+	case ModeTags:
+		if inv.Selector == "" {
+			tags, terr := query.Tags(root)
+			if terr != nil {
+				return errln(terr), 1
+			}
+			if inv.JSON {
+				return mustJSON(tags), 0
+			}
+			return formatTagsIndex(tags), 0
 		}
-		g, gerr := buildGraph(pos[0])
-		if gerr != nil {
-			return errln(gerr), 1
+		groups, terr := query.TagGroups(root, inv.Selector)
+		if terr != nil {
+			return errln(terr), 1
 		}
-		return mustJSON(g.Edges()), 0
-	case "next":
-		pos, _, err := partition(rest, nil)
-		if err != nil || len(pos) != 1 {
-			return usage(), 2
+		if inv.JSON {
+			return mustJSON(groups), 0
 		}
-		g, gerr := buildGraph(pos[0])
+		return formatTagGroups(groups), 0
+
+	case ModeNext:
+		g, gerr := buildGraph(root)
 		if gerr != nil {
 			return errln(gerr), 1
 		}
 		ready, _ := g.Next(graph.DefaultNextOptions())
-		return mustJSON(ready), 0
-	case "validate":
-		pos, flags, err := partition(rest, map[string]bool{"strict": true})
-		if err != nil || len(pos) != 1 {
-			return usage(), 2
+		ready = filterReady(ready, inv)
+		if inv.Limit > 0 && len(ready) > inv.Limit {
+			ready = ready[:inv.Limit]
 		}
-		rep, verr := validate.Run(pos[0], flags["strict"] == "true")
+		if inv.JSON {
+			return mustJSON(ready), 0
+		}
+		items := make([]query.ListItem, len(ready))
+		for i, r := range ready {
+			items[i] = query.Summarize(r)
+		}
+		return formatList(items), 0
+
+	case ModeNew:
+		if inv.Selector == "" {
+			return needSelector("--new")
+		}
+		tmpl := layout.TemplateNote
+		if inv.Type == "task" {
+			tmpl = layout.TemplateTask
+		}
+		fields := map[string]string{}
+		for k, v := range inv.Fields {
+			fields[k] = v
+		}
+		if inv.Status != "" {
+			fields["status"] = inv.Status
+		}
+		res, nerr := store.New(root, tmpl, inv.Selector, fields, time.Now(), layout.DefaultConfig())
+		if nerr != nil {
+			return errln(nerr), 1
+		}
+		if len(inv.Tags) > 0 {
+			if _, serr := store.Set(root, inv.Selector, nil, inv.Tags); serr != nil {
+				return errln(serr), 1
+			}
+		}
+		if inv.JSON {
+			return mustJSON(res), 0
+		}
+		return formatWrite(res), 0
+
+	case ModeSet:
+		if inv.Selector == "" {
+			return needSelector("--set")
+		}
+		fields := map[string]string{}
+		for k, v := range inv.Fields {
+			fields[k] = v
+		}
+		if inv.Status != "" {
+			fields["status"] = inv.Status
+		}
+		res, serr := store.Set(root, inv.Selector, fields, inv.Tags)
+		if serr != nil {
+			return errln(serr), 1
+		}
+		if inv.JSON {
+			return mustJSON(res), 0
+		}
+		return formatWrite(res), 0
+
+	case ModeValidate:
+		rep, verr := validate.Run(root, inv.Strict)
 		if verr != nil {
 			return errln(verr), 1
 		}
@@ -112,64 +251,90 @@ func run(args []string) (string, int) {
 		if !rep.OK {
 			code = 1
 		}
-		return mustJSON(rep), code
-	case "read":
-		pos, flags, err := partition(rest, map[string]bool{"raw": true})
-		if err != nil || len(pos) != 2 {
-			return usage(), 2
+		if inv.JSON {
+			return mustJSON(rep), code
 		}
-		rec, rerr := query.Read(pos[1], pos[0])
-		if rerr != nil {
-			return errln(rerr), 1
+		return formatReport(rep), code
+
+	case ModeGraph:
+		g, gerr := buildGraph(root)
+		if gerr != nil {
+			return errln(gerr), 1
 		}
-		if flags["raw"] == "true" {
-			return rec.Body, 0
+		edges := g.Edges()
+		if inv.JSON {
+			return mustJSON(edges), 0
 		}
-		return mustJSON(rec), 0
-	case "list":
-		pos, flags, err := partition(rest, nil)
-		if err != nil || len(pos) != 1 {
-			return usage(), 2
-		}
-		lf := query.ListFilters{Status: flags["status"], Type: flags["type"]}
-		if t := flags["tag"]; t != "" {
-			lf.Tags = []string{t}
-		}
-		items, lerr := query.List(pos[0], lf)
-		if lerr != nil {
-			return errln(lerr), 1
-		}
-		return mustJSON(items), 0
-	case "new":
-		pos, flags, fields, _, err := partitionMulti(rest, nil)
-		if err != nil || len(pos) != 2 {
-			return usage(), 2
-		}
-		tmpl := layout.Template(flags["template"])
-		if tmpl == "" {
-			tmpl = layout.TemplateNote
-		}
-		res, nerr := store.New(pos[1], tmpl, pos[0], fields, time.Now(), layout.DefaultConfig())
-		if nerr != nil {
-			return errln(nerr), 1
-		}
-		return mustJSON(res), 0
-	case "set":
-		pos, flags, fields, tags, err := partitionMulti(rest, nil)
-		if err != nil || len(pos) != 2 {
-			return usage(), 2
-		}
-		if s, ok := flags["status"]; ok {
-			fields["status"] = s
-		}
-		res, serr := store.Set(pos[1], pos[0], fields, tags)
-		if serr != nil {
-			return errln(serr), 1
-		}
-		return mustJSON(res), 0
-	default:
-		return usage(), 2
+		return formatEdges(edges), 0
 	}
+	return usage(), 2
+}
+
+func dispatchList(root string, inv Invocation) (string, int) {
+	items, lerr := query.List(root, query.ListFilters{Status: inv.Status, Type: inv.Type, Tags: inv.Tags})
+	if lerr != nil {
+		return errln(lerr), 1
+	}
+	if inv.Selector != "" {
+		items = filterItems(items, inv.Selector)
+	}
+	if inv.Limit > 0 && len(items) > inv.Limit {
+		items = items[:inv.Limit]
+	}
+	if inv.JSON {
+		return mustJSON(items), 0
+	}
+	return formatList(items), 0
+}
+
+func filterItems(items []query.ListItem, sel string) []query.ListItem {
+	s := strings.ToLower(sel)
+	out := []query.ListItem{}
+	for _, it := range items {
+		if strings.Contains(strings.ToLower(it.Path), s) || strings.Contains(strings.ToLower(it.Title), s) {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+func filterReady(ready []model.FileVitals, inv Invocation) []model.FileVitals {
+	sel := strings.ToLower(inv.Selector)
+	out := []model.FileVitals{}
+	for _, r := range ready {
+		it := query.Summarize(r)
+		if inv.Type != "" && it.Type != inv.Type {
+			continue
+		}
+		if inv.Status != "" && it.Status != inv.Status {
+			continue
+		}
+		if len(inv.Tags) > 0 && !hasAllTags(it.Tags, inv.Tags) {
+			continue
+		}
+		if sel != "" && !strings.Contains(strings.ToLower(it.Path), sel) && !strings.Contains(strings.ToLower(it.Title), sel) {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+func hasAllTags(have, want []string) bool {
+	set := map[string]bool{}
+	for _, t := range have {
+		set[t] = true
+	}
+	for _, w := range want {
+		if !set[w] {
+			return false
+		}
+	}
+	return true
+}
+
+func needSelector(mode string) (string, int) {
+	return "tfq: " + mode + " requires a selector\n\n" + usage(), 2
 }
 
 func buildGraph(dir string) (*graph.Graph, error) {
@@ -207,23 +372,36 @@ func mustJSON(v any) string {
 
 func usage() string {
 	return strings.Join([]string{
-		"tfq — query frontmatter'd text files",
+		"tfq — query frontmatter'd text records",
 		"",
-		"usage: tfq <verb> [args] [flags]",
+		"usage: tfq [OPTIONS] [SELECTOR...]",
 		"",
-		"  inspect <file>                    comprehensive FileVitals JSON for one file",
-		"  read <ref> <dir> [--raw]          a record (frontmatter + body), or --raw body only",
-		"  search <query> <dir> [--type T] [--tag G]   ripgrep search + frontmatter filters",
-		"  list <dir> [--status S] [--tag T] [--type T]   record summaries, filtered",
-		"  links <ref> <dir>                 outgoing edges from a record",
-		"  backlinks <ref> <dir>             records that reference <ref>",
-		"  graph <dir>                       all resolved edges in the collection",
-		"  next <dir>                        tasks ready to work on (deps satisfied)",
-		"  new <slug> <dir> [--template note|task] [--field k=v ...]   create a record",
-		"  set <ref> <dir> [--status S] [--add-tag T ...] [--field k=v ...]   mutate frontmatter",
-		"  validate <dir> [--strict]         validate vs .tfq.cue + edge resolution",
-		"  version                           build version (yyyymmdd.n.hash)",
-		"  help                              this message",
+		"Default (search):",
+		"  tfq battery supply        search records",
+		"  tfq -i battery            case-insensitive search",
+		"  tfq -l battery            matching files only",
+		"  tfq --status pending      list records (empty selector)",
+		"",
+		"Modes (one at a time):",
+		"  --list [QUERY]            record summaries",
+		"  --show REF                show one record (--raw, --frontmatter)",
+		"  --links REF               outbound + inbound links (--inbound/--outbound)",
+		"  --tags [QUERY]            tag index / tag search",
+		"  --next [QUERY]            ready tasks (deps satisfied)",
+		"  --new SLUG                create record (--type, --tag, --status, --field)",
+		"  --set REF                 update record (--status, --tag, --field)",
+		"  --done REF                mark task done",
+		"  --validate                validate collection (--strict)",
+		"  --inspect FILE            FileVitals for one file",
+		"  --graph                   all resolved edges",
+		"  --version  --help",
+		"",
+		"Aliases: --task (=--new --type task), --backlinks (=--links --inbound),",
+		"         --outlinks/--forward-links (=--links --outbound)",
+		"",
+		"Filters:  --type T   --tag T (repeatable)   --status S   --limit N",
+		"Search:   -i/--ignore-case   -l/--files-with-matches   -c/--count   --heading/--no-heading",
+		"Output:   --json   --root DIR (else $TFQ_ROOT, ancestor .tfq.*, cwd)   -e/--query PATTERN",
 	}, "\n")
 }
 

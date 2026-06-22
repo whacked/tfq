@@ -8,47 +8,6 @@ import (
 	"testing"
 )
 
-func TestRunInspect(t *testing.T) {
-	dir := t.TempDir()
-	f := filepath.Join(dir, "n.md")
-	if err := os.WriteFile(f, []byte("---\ntitle: T\n---\n# H\n#tag\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	out, code := run([]string{"inspect", f})
-	if code != 0 {
-		t.Fatalf("exit %d, out=%s", code, out)
-	}
-	var fv map[string]any
-	if err := json.Unmarshal([]byte(out), &fv); err != nil {
-		t.Fatalf("output not json: %v\n%s", err, out)
-	}
-	if fv["format"] != "markdown" {
-		t.Errorf("format = %v", fv["format"])
-	}
-}
-
-func TestRunVersion(t *testing.T) {
-	out, code := run([]string{"version"})
-	if code != 0 {
-		t.Fatalf("version should exit 0, got %d", code)
-	}
-	if out != version {
-		t.Errorf("version output = %q, want %q", out, version)
-	}
-	if out == "" {
-		t.Error("version string must not be empty")
-	}
-}
-
-func TestRunUsage(t *testing.T) {
-	if _, code := run([]string{}); code != 2 {
-		t.Errorf("expected exit 2 for no args, got %d", code)
-	}
-	if _, code := run([]string{"bogus"}); code != 2 {
-		t.Errorf("expected exit 2 for unknown subcommand, got %d", code)
-	}
-}
-
 func mustWrite(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
@@ -57,143 +16,156 @@ func mustWrite(t *testing.T, dir, name, content string) {
 }
 func contains(s, sub string) bool { return strings.Contains(s, sub) }
 
-func TestRunBacklinksAndNext(t *testing.T) {
-	dir := t.TempDir()
-	mustWrite(t, dir, "001.md", "---\nid: \"001\"\nstatus: completed\n---\n# done\n")
-	mustWrite(t, dir, "002.md", "---\nid: \"002\"\nstatus: pending\ndependencies: [\"001\"]\n---\n# go\nsee [[001]]\n")
-
-	out, code := run([]string{"next", dir})
-	if code != 0 {
-		t.Fatalf("next exit %d: %s", code, out)
+func TestRunHelpAndVersion(t *testing.T) {
+	if out, code := run([]string{}); code != 0 || !contains(out, "usage") {
+		t.Errorf("bare tfq should print help, got code=%d", code)
 	}
-	if !contains(out, "002.md") || contains(out, "001.md") {
-		t.Errorf("next output wrong: %s", out)
+	if out, code := run([]string{"--version"}); code != 0 || out != version {
+		t.Errorf("--version = %q code=%d", out, code)
 	}
-
-	out, code = run([]string{"backlinks", "001", dir})
-	if code != 0 {
-		t.Fatalf("backlinks exit %d: %s", code, out)
+	if _, code := run([]string{"--bogus"}); code != 2 {
+		t.Errorf("unknown flag should exit 2, got %d", code)
 	}
-	if !contains(out, "002.md") {
-		t.Errorf("backlinks output wrong: %s", out)
+	if _, code := run([]string{"--show", "--links", "x"}); code != 2 {
+		t.Errorf("two modes should exit 2, got %d", code)
 	}
 }
 
-func TestRunSearch(t *testing.T) {
+func TestRunSearchHumanAndJSON(t *testing.T) {
 	dir := t.TempDir()
-	mustWrite(t, dir, "a.md", "needle in here\n")
-	out, code := run([]string{"search", "needle", dir})
-	if code != 0 {
-		t.Fatalf("search exit %d: %s", code, out)
+	mustWrite(t, dir, "a.md", "needle here\n")
+
+	out, code := run([]string{"--root", dir, "needle"})
+	if code != 0 || !contains(out, "a.md") || !contains(out, "1: needle here") {
+		t.Errorf("human search wrong: code=%d\n%s", code, out)
 	}
-	if !contains(out, "a.md") {
-		t.Errorf("search output wrong: %s", out)
+
+	out, code = run([]string{"--root", dir, "needle", "--json"})
+	if code != 0 {
+		t.Fatalf("json search exit %d: %s", code, out)
+	}
+	var hits []map[string]any
+	if err := json.Unmarshal([]byte(out), &hits); err != nil || len(hits) != 1 {
+		t.Errorf("json search wrong: %v\n%s", err, out)
+	}
+
+	out, _ = run([]string{"--root", dir, "needle", "-l"})
+	if strings.TrimSpace(out) != "a.md" {
+		t.Errorf("-l output = %q", out)
 	}
 }
 
-func TestRunSearchFilters(t *testing.T) {
+func TestRunListFolding(t *testing.T) {
 	dir := t.TempDir()
-	mustWrite(t, dir, "a.md", "---\ntype: note\n---\nhello world\n")
-	mustWrite(t, dir, "b.md", "---\ntype: log\n---\nhello again\n")
+	mustWrite(t, dir, "a.md", "---\nstatus: pending\n---\n# a\n")
+	mustWrite(t, dir, "b.md", "---\nstatus: done\n---\n# b\n")
 
-	out, code := run([]string{"search", "hello", dir, "--type", "log"})
-	if code != 0 {
-		t.Fatalf("exit %d: %s", code, out)
+	// empty selector + filter => list behavior
+	out, code := run([]string{"--root", dir, "--status", "pending"})
+	if code != 0 || !contains(out, "a.md") || contains(out, "b.md") {
+		t.Errorf("empty-selector list wrong: %s", out)
 	}
-	if !contains(out, "b.md") || contains(out, "a.md") {
-		t.Errorf("--type filter not applied: %s", out)
+	// explicit --list mode
+	out, _ = run([]string{"--root", dir, "--list"})
+	if !contains(out, "a.md") || !contains(out, "b.md") {
+		t.Errorf("--list wrong: %s", out)
 	}
 }
 
-func TestRunLinks(t *testing.T) {
+func TestRunTagsMode(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "a.md", "---\ntags: [battery, supply-chain]\n---\n# a\n")
+	mustWrite(t, dir, "b.md", "---\ntags: [battery]\n---\n# b\n")
+
+	out, code := run([]string{"--root", dir, "--tags"})
+	if code != 0 || !contains(out, "battery") {
+		t.Errorf("tags index wrong: %s", out)
+	}
+	out, _ = run([]string{"--root", dir, "--tags", "supply"})
+	if !contains(out, "supply-chain") || !contains(out, "a.md") {
+		t.Errorf("tags search wrong: %s", out)
+	}
+}
+
+func TestRunLinksBothDirections(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, dir, "a.md", "---\nslug: a\n---\nsee [[b]]\n")
-	mustWrite(t, dir, "b.md", "---\nslug: b\n---\n# b\n")
+	mustWrite(t, dir, "b.md", "---\nslug: b\n---\nlink [[a]]\n")
 
-	out, code := run([]string{"links", "a", dir})
-	if code != 0 {
-		t.Fatalf("exit %d: %s", code, out)
+	out, code := run([]string{"--root", dir, "--links", "a"})
+	if code != 0 || !contains(out, "outbound") || !contains(out, "inbound") {
+		t.Errorf("links both dirs wrong: %s", out)
 	}
-	if !contains(out, "\"to\": \"b.md\"") {
-		t.Errorf("links should show forward edge to b.md: %s", out)
+	out, _ = run([]string{"--root", dir, "--backlinks", "a"})
+	if contains(out, "outbound") {
+		t.Errorf("--backlinks should be inbound only: %s", out)
 	}
 }
 
-func TestRunHelp(t *testing.T) {
-	out, code := run([]string{"help"})
-	if code != 0 {
-		t.Errorf("help should exit 0, got %d", code)
-	}
-	for _, verb := range []string{"inspect", "search", "links", "backlinks", "graph", "next", "validate"} {
-		if !contains(out, verb) {
-			t.Errorf("help missing verb %q", verb)
-		}
-	}
-}
-
-func TestRunNewAndSetAndListAndRead(t *testing.T) {
+func TestRunWriteWorkflow(t *testing.T) {
 	dir := t.TempDir()
 
-	// new task
-	out, code := run([]string{"new", "do-thing", dir, "--template", "task"})
-	if code != 0 {
-		t.Fatalf("new exit %d: %s", code, out)
+	// create two tasks
+	if _, code := run([]string{"--root", dir, "--new", "first", "--type", "task"}); code != 0 {
+		t.Fatal("new first failed")
 	}
-	if !contains(out, "\"action\": \"created\"") {
-		t.Errorf("new output: %s", out)
+	if _, code := run([]string{"--root", dir, "--new", "second", "--type", "task"}); code != 0 {
+		t.Fatal("new second failed")
 	}
-
-	// list shows it as pending
-	out, code = run([]string{"list", dir, "--status", "pending"})
-	if code != 0 {
-		t.Fatalf("list exit %d: %s", code, out)
+	// second depends on first
+	if _, code := run([]string{"--root", dir, "--set", "second", "--field", "dependencies=first"}); code != 0 {
+		t.Fatal("set dep failed")
 	}
-	if !contains(out, "do-thing") {
-		t.Errorf("list output: %s", out)
+	// next gates "second" until "first" is done; "first" is ready
+	out, _ := run([]string{"--root", dir, "--next"})
+	if !contains(out, "first") || contains(out, "second") {
+		t.Errorf("next gating wrong: %s", out)
 	}
-
-	// set it to completed
-	out, code = run([]string{"set", "do-thing", dir, "--status", "completed"})
-	if code != 0 {
-		t.Fatalf("set exit %d: %s", code, out)
+	// complete first via --done
+	if _, code := run([]string{"--root", dir, "--done", "first"}); code != 0 {
+		t.Fatal("done failed")
 	}
-	if !contains(out, "\"action\": \"updated\"") {
-		t.Errorf("set output: %s", out)
+	// now second is ready
+	out, _ = run([]string{"--root", dir, "--next"})
+	if !contains(out, "second") {
+		t.Errorf("second should be ready: %s", out)
 	}
-
-	// now no pending tasks
-	out, _ = run([]string{"list", dir, "--status", "pending"})
-	if contains(out, "do-thing") {
-		t.Errorf("task should no longer be pending: %s", out)
-	}
-
-	// read --raw shows the body
-	out, code = run([]string{"read", "do-thing", dir, "--raw"})
-	if code != 0 {
-		t.Fatalf("read exit %d: %s", code, out)
-	}
-	if !contains(out, "do thing") {
-		t.Errorf("read --raw output: %s", out)
+	// show --raw prints the body
+	out, code := run([]string{"--root", dir, "--show", "second", "--raw"})
+	if code != 0 || !contains(out, "second") {
+		t.Errorf("show --raw wrong: %s", out)
 	}
 }
 
-func TestRunValidate(t *testing.T) {
+func TestRunAmbiguousWriteErrors(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "a.md", "---\nslug: dup\nstatus: pending\n---\n# a\n")
+	mustWrite(t, dir, "b.md", "---\ntitle: dup\nstatus: pending\n---\n# b\n")
+	if _, code := run([]string{"--root", dir, "--done", "dup"}); code != 1 {
+		t.Errorf("ambiguous write should exit 1, got %d", code)
+	}
+}
+
+func TestRunInspectAndValidate(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, dir, ".tfq.cue", "status: \"pending\" | \"completed\"\n")
 	mustWrite(t, dir, "ok.md", "---\nstatus: completed\n---\n# ok\n")
 
-	out, code := run([]string{"validate", dir})
+	f := filepath.Join(dir, "ok.md")
+	out, code := run([]string{"--inspect", f, "--json"})
 	if code != 0 {
-		t.Fatalf("liberal validate should exit 0, got %d: %s", code, out)
+		t.Fatalf("inspect exit %d: %s", code, out)
 	}
-	if !contains(out, "\"ok\": true") {
-		t.Errorf("expected ok:true: %s", out)
+	var fv map[string]any
+	if json.Unmarshal([]byte(out), &fv) != nil || fv["format"] != "markdown" {
+		t.Errorf("inspect json wrong: %s", out)
 	}
 
-	// strict over a bad record exits 1
+	if _, code := run([]string{"--root", dir, "--validate"}); code != 0 {
+		t.Errorf("liberal validate should exit 0, got %d", code)
+	}
 	mustWrite(t, dir, "bad.md", "---\nstatus: nope\n---\n# bad\n")
-	_, code = run([]string{"validate", dir, "--strict"})
-	if code != 1 {
+	if _, code := run([]string{"--root", dir, "--validate", "--strict"}); code != 1 {
 		t.Errorf("strict validate over bad record should exit 1, got %d", code)
 	}
 }
