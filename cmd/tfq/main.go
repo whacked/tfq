@@ -131,7 +131,11 @@ func run(args []string) (string, int) {
 		if err != nil || len(pos) != 1 {
 			return usage(), 2
 		}
-		items, lerr := query.List(pos[0], query.ListFilters{Status: flags["status"], Tag: flags["tag"], Type: flags["type"]})
+		lf := query.ListFilters{Status: flags["status"], Type: flags["type"]}
+		if t := flags["tag"]; t != "" {
+			lf.Tags = []string{t}
+		}
+		items, lerr := query.List(pos[0], lf)
 		if lerr != nil {
 			return errln(lerr), 1
 		}

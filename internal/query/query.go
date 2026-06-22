@@ -24,7 +24,7 @@ type ListItem struct {
 // ListFilters narrows a List (AND semantics; empty matches all).
 type ListFilters struct {
 	Status string
-	Tag    string
+	Tags   []string
 	Type   string
 }
 
@@ -78,18 +78,123 @@ func List(root string, f ListFilters) ([]ListItem, error) {
 		if f.Type != "" && fmStr(r.Frontmatter, "type") != f.Type {
 			continue
 		}
-		if f.Tag != "" && !containsStr(tags, f.Tag) {
+		if !hasAllTags(tags, f.Tags) {
 			continue
 		}
-		out = append(out, ListItem{
-			Path:   r.Path,
-			Title:  titleOf(r),
-			Status: fmStr(r.Frontmatter, "status"),
-			Type:   fmStr(r.Frontmatter, "type"),
-			Tags:   tags,
-		})
+		out = append(out, Summarize(r))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out, nil
+}
+
+func hasAllTags(have, want []string) bool {
+	for _, w := range want {
+		if !containsStr(have, w) {
+			return false
+		}
+	}
+	return true
+}
+
+// Summarize builds the compact ListItem view of a record.
+func Summarize(r model.FileVitals) ListItem {
+	return ListItem{
+		Path:   r.Path,
+		Title:  titleOf(r),
+		Status: fmStr(r.Frontmatter, "status"),
+		Type:   fmStr(r.Frontmatter, "type"),
+		Tags:   fmTags(r.Frontmatter),
+	}
+}
+
+// recordTags is the deduped union of frontmatter tags and #hashtag markers.
+func recordTags(r model.FileVitals) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	add := func(s string) {
+		if s != "" && !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	for _, t := range fmTags(r.Frontmatter) {
+		add(t)
+	}
+	for _, m := range r.Markers {
+		if m.Kind == model.MarkerHashtag {
+			add(m.Value)
+		}
+	}
+	return out
+}
+
+// TagCount is one entry of the tag index.
+type TagCount struct {
+	Tag   string `json:"tag"`
+	Count int    `json:"count"`
+}
+
+// Tags returns the tag index (count per tag) under root, sorted by count desc
+// then name asc.
+func Tags(root string) ([]TagCount, error) {
+	recs, _, err := scan.Collect(root)
+	if err != nil {
+		return nil, err
+	}
+	counts := map[string]int{}
+	for _, r := range recs {
+		for _, t := range recordTags(r) {
+			counts[t]++
+		}
+	}
+	out := make([]TagCount, 0, len(counts))
+	for t, c := range counts {
+		out = append(out, TagCount{Tag: t, Count: c})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Tag < out[j].Tag
+	})
+	return out, nil
+}
+
+// TagGroup is a tag plus its member records.
+type TagGroup struct {
+	Tag     string     `json:"tag"`
+	Count   int        `json:"count"`
+	Records []ListItem `json:"records"`
+}
+
+// TagGroups returns groups for tags whose name contains substr (all tags when
+// substr is ""), each with its member records. Sorted by count desc, name asc.
+func TagGroups(root, substr string) ([]TagGroup, error) {
+	recs, _, err := scan.Collect(root)
+	if err != nil {
+		return nil, err
+	}
+	ls := strings.ToLower(substr)
+	byTag := map[string][]ListItem{}
+	for _, r := range recs {
+		item := Summarize(r)
+		for _, t := range recordTags(r) {
+			if substr == "" || strings.Contains(strings.ToLower(t), ls) {
+				byTag[t] = append(byTag[t], item)
+			}
+		}
+	}
+	out := make([]TagGroup, 0, len(byTag))
+	for t, members := range byTag {
+		sort.Slice(members, func(i, j int) bool { return members[i].Path < members[j].Path })
+		out = append(out, TagGroup{Tag: t, Count: len(members), Records: members})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Tag < out[j].Tag
+	})
 	return out, nil
 }
 

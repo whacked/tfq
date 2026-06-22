@@ -35,7 +35,7 @@ func TestListFilters(t *testing.T) {
 		t.Errorf("status filter wrong: %#v", pend)
 	}
 
-	tagged, _ := List(dir, ListFilters{Tag: "a"})
+	tagged, _ := List(dir, ListFilters{Tags: []string{"a"}})
 	if len(tagged) != 1 || tagged[0].Path != "001.md" {
 		t.Errorf("tag filter wrong: %#v", tagged)
 	}
@@ -59,5 +59,44 @@ func TestRead(t *testing.T) {
 	}
 	if _, err := Read(dir, "nonexistent"); err == nil {
 		t.Error("unknown ref should error")
+	}
+}
+
+func TestListMultiTagAnd(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "a.md", "---\ntags: [x, y]\n---\n# a\n")
+	writeFile(t, dir, "b.md", "---\ntags: [x]\n---\n# b\n")
+	items, err := List(dir, ListFilters{Tags: []string{"x", "y"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Path != "a.md" {
+		t.Errorf("multi-tag list got %#v, want only a.md", items)
+	}
+}
+
+func TestTagsIndexCounts(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "a.md", "---\ntags: [x, y]\n---\n# a\n")
+	writeFile(t, dir, "b.md", "---\ntags: [x]\n---\n# b\n")
+	tags, err := Tags(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != 2 || tags[0].Tag != "x" || tags[0].Count != 2 {
+		t.Errorf("tags index got %#v, want x=2 first", tags)
+	}
+}
+
+func TestTagGroupsFilterAndMembers(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "a.md", "---\ntags: [supply-chain]\n---\n# a\n")
+	writeFile(t, dir, "b.md", "---\ntags: [risk]\n---\n# b\n")
+	groups, err := TagGroups(dir, "supply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 1 || groups[0].Tag != "supply-chain" || len(groups[0].Records) != 1 {
+		t.Errorf("tag groups got %#v, want one supply-chain group with 1 record", groups)
 	}
 }
