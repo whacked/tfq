@@ -52,8 +52,8 @@ func TestNewTaskWithFields(t *testing.T) {
 	if !strings.Contains(s, "status: pending") || !strings.Contains(s, "priority: high") {
 		t.Errorf("task frontmatter wrong:\n%s", s)
 	}
-	if !strings.Contains(s, "id:") {
-		t.Errorf("task missing id:\n%s", s)
+	if !strings.Contains(s, "id: \"001\"") {
+		t.Errorf("task id must be a quoted string (leading zero preserved):\n%s", s)
 	}
 }
 

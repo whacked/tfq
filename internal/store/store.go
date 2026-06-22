@@ -12,6 +12,19 @@ import (
 	"tfq/internal/layout"
 )
 
+// leadingZeroNum matches all-digit values with a leading zero (e.g. "001"),
+// which YAML would otherwise parse as an integer, losing the zero-padding.
+var leadingZeroNum = regexp.MustCompile(`^0[0-9]+$`)
+
+// yamlValue quotes a scalar that YAML would misread (currently: zero-padded
+// numbers) so it round-trips as a string.
+func yamlValue(v string) string {
+	if leadingZeroNum.MatchString(v) {
+		return `"` + v + `"`
+	}
+	return v
+}
+
 // WriteResult reports a create/update.
 type WriteResult struct {
 	Path   string `json:"path"`
@@ -94,7 +107,7 @@ func renderFM(base map[string]string, order []string, fields map[string]string) 
 			}
 		}
 		used[k] = true
-		out = append(out, k+": "+v)
+		out = append(out, k+": "+yamlValue(v))
 	}
 	extra := []string{}
 	for k := range fields {
@@ -104,7 +117,7 @@ func renderFM(base map[string]string, order []string, fields map[string]string) 
 	}
 	sort.Strings(extra)
 	for _, k := range extra {
-		out = append(out, k+": "+fields[k])
+		out = append(out, k+": "+yamlValue(fields[k]))
 	}
 	return out
 }
