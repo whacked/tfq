@@ -1,0 +1,63 @@
+package main
+
+import (
+	"strings"
+	"testing"
+
+	"tfq/internal/graph"
+	"tfq/internal/query"
+	"tfq/internal/search"
+)
+
+func TestFormatHitsHeading(t *testing.T) {
+	hits := []search.Hit{
+		{Path: "a.md", Line: 12, Text: "model battery"},
+		{Path: "a.md", Line: 37, Text: "supply risk"},
+		{Path: "b.md", Line: 8, Text: "cathode"},
+	}
+	out := formatHits(hits, true)
+	if !strings.Contains(out, "a.md\n12: model battery\n37: supply risk") {
+		t.Errorf("heading output wrong:\n%s", out)
+	}
+	flat := formatHits(hits, false)
+	if !strings.Contains(flat, "a.md:12:model battery") {
+		t.Errorf("no-heading output wrong:\n%s", flat)
+	}
+}
+
+func TestFilesAndCounts(t *testing.T) {
+	hits := []search.Hit{{Path: "a.md", Line: 1}, {Path: "a.md", Line: 2}, {Path: "b.md", Line: 1}}
+	if got := filesOf(hits); len(got) != 2 || got[0] != "a.md" {
+		t.Errorf("filesOf = %#v", got)
+	}
+	c := countsOf(hits)
+	if len(c) != 2 || c[0].Path != "a.md" || c[0].Count != 2 {
+		t.Errorf("countsOf = %#v", c)
+	}
+}
+
+func TestFormatListBlock(t *testing.T) {
+	out := formatList([]query.ListItem{{Path: "x.md", Type: "task", Status: "pending", Tags: []string{"a"}, Title: "Do X"}})
+	if !strings.Contains(out, "x.md  task pending #a") || !strings.Contains(out, "title: Do X") {
+		t.Errorf("list block wrong:\n%s", out)
+	}
+}
+
+func TestFormatLinksBothDirections(t *testing.T) {
+	out := formatLinks("a.md",
+		[]graph.Edge{{From: "a.md", Kind: "wiki", Raw: "b", To: "b.md"}},
+		[]string{"c.md"}, true, true)
+	if !strings.Contains(out, "# outbound links") || !strings.Contains(out, "==> b.md") {
+		t.Errorf("missing outbound:\n%s", out)
+	}
+	if !strings.Contains(out, "# inbound links") || !strings.Contains(out, "<== c.md") {
+		t.Errorf("missing inbound:\n%s", out)
+	}
+}
+
+func TestFormatTagsIndex(t *testing.T) {
+	out := formatTagsIndex([]query.TagCount{{Tag: "battery", Count: 42}})
+	if !strings.Contains(out, "battery") || !strings.Contains(out, "42") {
+		t.Errorf("tags index wrong:\n%s", out)
+	}
+}
