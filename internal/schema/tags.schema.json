@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tfq/schemas/tags.json",
+  "title": "Tags",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["tag", "count"],
+    "properties": {
+      "tag": { "type": "string" },
+      "count": { "type": "integer" }
+    }
+  }
+}

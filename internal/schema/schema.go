@@ -31,6 +31,9 @@ var RecordSchema []byte
 //go:embed write.schema.json
 var WriteSchema []byte
 
+//go:embed tags.schema.json
+var TagsSchema []byte
+
 var compiled = mustCompile()
 var compiledEdges = mustCompileNamed("edges.schema.json", EdgesSchema)
 var compiledHits = mustCompileNamed("hits.schema.json", HitsSchema)
@@ -38,6 +41,7 @@ var compiledReport = mustCompileNamed("report.schema.json", ReportSchema)
 var compiledList = mustCompileNamed("list.schema.json", ListSchema)
 var compiledRecord = mustCompileNamed("record.schema.json", RecordSchema)
 var compiledWrite = mustCompileNamed("write.schema.json", WriteSchema)
+var compiledTags = mustCompileNamed("tags.schema.json", TagsSchema)
 
 func mustCompile() *jsonschema.Schema {
 	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(FileVitalsSchema))
@@ -121,3 +125,6 @@ func ValidateRecord(rec any) error { return validateAgainst(compiledRecord, rec)
 
 // ValidateWrite validates a WriteResult. Takes any to avoid an import cycle.
 func ValidateWrite(w any) error { return validateAgainst(compiledWrite, w) }
+
+// ValidateTags validates the tag index. Takes any to avoid an import cycle.
+func ValidateTags(tags any) error { return validateAgainst(compiledTags, tags) }
