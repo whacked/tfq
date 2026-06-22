@@ -18,6 +18,11 @@ import (
 	"tfq/internal/validate"
 )
 
+// version is the build version, in the form yyyymmdd.<nth-commit-of-day>.<hash>.
+// Overridden at build time via -ldflags "-X main.version=..." (see Makefile);
+// defaults to "dev" for plain `go build`.
+var version = "dev"
+
 // run returns (stdoutText, exitCode). Kept pure for testing; main wires it to os.
 func run(args []string) (string, int) {
 	if len(args) < 1 {
@@ -27,6 +32,8 @@ func run(args []string) (string, int) {
 	switch verb {
 	case "help":
 		return usage(), 0
+	case "version":
+		return version, 0
 	case "inspect":
 		pos, _, err := partition(rest, nil)
 		if err != nil || len(pos) != 1 {
@@ -207,6 +214,7 @@ func usage() string {
 		"  new <slug> <dir> [--template note|task] [--field k=v ...]   create a record",
 		"  set <ref> <dir> [--status S] [--add-tag T ...] [--field k=v ...]   mutate frontmatter",
 		"  validate <dir> [--strict]         validate vs .tfq.cue + edge resolution",
+		"  version                           build version (yyyymmdd.n.hash)",
 		"  help                              this message",
 	}, "\n")
 }

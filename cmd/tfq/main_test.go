@@ -27,6 +27,19 @@ func TestRunInspect(t *testing.T) {
 	}
 }
 
+func TestRunVersion(t *testing.T) {
+	out, code := run([]string{"version"})
+	if code != 0 {
+		t.Fatalf("version should exit 0, got %d", code)
+	}
+	if out != version {
+		t.Errorf("version output = %q, want %q", out, version)
+	}
+	if out == "" {
+		t.Error("version string must not be empty")
+	}
+}
+
 func TestRunUsage(t *testing.T) {
 	if _, code := run([]string{}); code != 2 {
 		t.Errorf("expected exit 2 for no args, got %d", code)

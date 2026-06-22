@@ -16,6 +16,7 @@ query output is JSON.
 | `new` | `<slug> <dir>` | `--template note\|task`, `--field k=v` (repeatable) | WriteResult (created) |
 | `set` | `<ref> <dir>` | `--status S`, `--add-tag T` (repeatable), `--field k=v` (repeatable) | WriteResult (updated) |
 | `validate` | `<dir>` | `--strict` | validation Report vs `.tfq.cue` |
+| `version` | | | build version `yyyymmdd.n.hash` (injected via Makefile) |
 | `help` | | | usage |
 
 `<ref>` resolves by any key: path, basename, basename with a leading `NNN-`
