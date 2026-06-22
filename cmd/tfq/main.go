@@ -49,7 +49,11 @@ func run(args []string) (string, int) {
 		if err != nil || len(pos) != 2 {
 			return usage(), 2
 		}
-		hits, _, serr := search.Search(pos[1], pos[0], search.Filters{Type: flags["type"], Tag: flags["tag"]})
+		sf := search.Filters{Type: flags["type"]}
+		if t := flags["tag"]; t != "" {
+			sf.Tags = []string{t}
+		}
+		hits, _, serr := search.Search(pos[1], pos[0], sf)
 		if serr != nil {
 			return errln(serr), 1
 		}

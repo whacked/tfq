@@ -59,3 +59,35 @@ func TestSearchNoMatches(t *testing.T) {
 		t.Errorf("expected 0 hits, got %#v", hits)
 	}
 }
+
+func TestSearchIgnoreCase(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "a.md", "Needle here\n")
+	hits, _, err := Search(dir, "needle", Filters{IgnoreCase: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("ignore-case search got %d hits, want 1", len(hits))
+	}
+}
+
+func TestSearchMultiTagAnd(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "a.md", "---\ntags: [x, y]\n---\nhello\n")
+	writeFile(t, dir, "b.md", "---\ntags: [x]\n---\nhello\n")
+	hits, _, _ := Search(dir, "hello", Filters{Tags: []string{"x", "y"}})
+	if len(hits) != 1 || hits[0].Path != "a.md" {
+		t.Errorf("multi-tag AND got %#v, want only a.md", hits)
+	}
+}
+
+func TestSearchStatusFilter(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "a.md", "---\nstatus: done\n---\nhello\n")
+	writeFile(t, dir, "b.md", "---\nstatus: pending\n---\nhello\n")
+	hits, _, _ := Search(dir, "hello", Filters{Status: "pending"})
+	if len(hits) != 1 || hits[0].Path != "b.md" {
+		t.Errorf("status filter got %#v, want only b.md", hits)
+	}
+}

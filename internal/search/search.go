@@ -19,10 +19,12 @@ type Hit struct {
 	Text string `json:"text"`
 }
 
-// Filters narrows hits by frontmatter.
+// Filters narrows hits by frontmatter (AND semantics; empty matches all).
 type Filters struct {
-	Type string
-	Tag  string
+	Type       string
+	Status     string
+	Tags       []string
+	IgnoreCase bool
 }
 
 type rgEvent struct {
@@ -40,7 +42,12 @@ type rgEvent struct {
 
 // Search runs ripgrep over root and post-filters by frontmatter.
 func Search(root, query string, f Filters) ([]Hit, []model.Warning, error) {
-	cmd := exec.Command("rg", "--json", "--line-number", "--", query, root)
+	rgArgs := []string{"--json", "--line-number"}
+	if f.IgnoreCase {
+		rgArgs = append(rgArgs, "-i")
+	}
+	rgArgs = append(rgArgs, "--", query, root)
+	cmd := exec.Command("rg", rgArgs...)
 	out, err := cmd.Output()
 	if err != nil {
 		// rg exits 1 when there are no matches; that is not an error.
@@ -76,7 +83,7 @@ func Search(root, query string, f Filters) ([]Hit, []model.Warning, error) {
 			continue
 		}
 		abs := ev.Data.Path.Text
-		if f.Type != "" || f.Tag != "" {
+		if f.Type != "" || f.Status != "" || len(f.Tags) > 0 {
 			v, ok := inspect(abs)
 			if !ok || !passesFilters(v, f) {
 				continue
@@ -108,8 +115,14 @@ func passesFilters(v model.FileVitals, f Filters) bool {
 			return false
 		}
 	}
-	if f.Tag != "" {
-		if !hasTag(v, f.Tag) {
+	if f.Status != "" {
+		s, ok := v.Frontmatter["status"].(string)
+		if !ok || s != f.Status {
+			return false
+		}
+	}
+	for _, tag := range f.Tags {
+		if !hasTag(v, tag) {
 			return false
 		}
 	}
