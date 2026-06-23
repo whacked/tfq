@@ -72,21 +72,23 @@ func scaffold(tmpl layout.Template, slug string, date time.Time, seq int, cfg la
 	switch tmpl {
 	case layout.TemplateTask:
 		base := map[string]string{
+			"type":     "task",
 			"id":       fmt.Sprintf("%0*d", pad, seq),
 			"title":    titleWords(slug),
 			"status":   "pending",
 			"priority": "medium",
 		}
-		order := []string{"id", "title", "status", "priority"}
+		order := []string{"type", "id", "title", "status", "priority"}
 		fm = renderFM(base, order, fields)
 		body = "# " + titleWords(slug) + "\n"
 	default: // note
 		base := map[string]string{
+			"type":   "note",
 			"date":   date.Format("2006-01-02"),
 			"author": "agent",
 			"slug":   slug,
 		}
-		order := []string{"date", "author", "slug"}
+		order := []string{"type", "date", "author", "slug"}
 		fm = renderFM(base, order, fields)
 		fm = append(fm, "source_notes: []", "tags: []")
 		body = "# " + titleWords(slug) + "\n\n<summary>\n"

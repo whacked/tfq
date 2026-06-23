@@ -78,3 +78,23 @@ func TestNewNoOverwrite(t *testing.T) {
 		t.Errorf("second task path = %q, want 002-y.md", res.Path)
 	}
 }
+
+func TestNewWritesTypeField(t *testing.T) {
+	root := t.TempDir()
+	rt, _ := New(root, layout.TemplateTask, "a-task", nil, fixedDate(t), layout.DefaultConfig())
+	bt, _ := os.ReadFile(filepath.Join(root, rt.Path))
+	if !strings.Contains(string(bt), "type: task") {
+		t.Errorf("task should carry type: task:\n%s", bt)
+	}
+	rn, _ := New(root, layout.TemplateNote, "a-note", nil, fixedDate(t), layout.DefaultConfig())
+	bn, _ := os.ReadFile(filepath.Join(root, rn.Path))
+	if !strings.Contains(string(bn), "type: note") {
+		t.Errorf("note should carry type: note:\n%s", bn)
+	}
+	// explicit field overrides the template default
+	ro, _ := New(root, layout.TemplateNote, "a-log", map[string]string{"type": "log"}, fixedDate(t), layout.DefaultConfig())
+	bo, _ := os.ReadFile(filepath.Join(root, ro.Path))
+	if !strings.Contains(string(bo), "type: log") {
+		t.Errorf("explicit type should win:\n%s", bo)
+	}
+}
