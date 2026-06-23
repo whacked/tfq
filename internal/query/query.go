@@ -160,6 +160,38 @@ func Tags(root string) ([]TagCount, error) {
 	return out, nil
 }
 
+// TypeCount is one entry of the frontmatter `type:` index.
+type TypeCount struct {
+	Type  string `json:"type"`
+	Count int    `json:"count"`
+}
+
+// Types returns the count index of distinct frontmatter `type:` values under
+// root, sorted by count desc then name asc.
+func Types(root string) ([]TypeCount, error) {
+	recs, _, err := scan.Collect(root)
+	if err != nil {
+		return nil, err
+	}
+	counts := map[string]int{}
+	for _, r := range recs {
+		if t := fmStr(r.Frontmatter, "type"); t != "" {
+			counts[t]++
+		}
+	}
+	out := make([]TypeCount, 0, len(counts))
+	for t, c := range counts {
+		out = append(out, TypeCount{Type: t, Count: c})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Type < out[j].Type
+	})
+	return out, nil
+}
+
 // TagGroup is a tag plus its member records.
 type TagGroup struct {
 	Tag     string     `json:"tag"`

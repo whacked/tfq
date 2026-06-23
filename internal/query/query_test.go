@@ -100,3 +100,17 @@ func TestTagGroupsFilterAndMembers(t *testing.T) {
 		t.Errorf("tag groups got %#v, want one supply-chain group with 1 record", groups)
 	}
 }
+
+func TestTypesIndexCounts(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "a.md", "---\ntype: note\n---\n# a\n")
+	writeFile(t, dir, "b.md", "---\ntype: note\n---\n# b\n")
+	writeFile(t, dir, "c.md", "---\ntype: task\n---\n# c\n")
+	types, err := Types(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(types) != 2 || types[0].Type != "note" || types[0].Count != 2 {
+		t.Errorf("types index got %#v, want note=2 first", types)
+	}
+}
