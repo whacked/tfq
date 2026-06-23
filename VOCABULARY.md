@@ -95,6 +95,22 @@ current directory
 
 `--inspect` is the exception: its selector is a literal file path, used as-is.
 
+## Color
+
+Human output is colored by default when stdout is a terminal, and plain when
+piped or redirected (ripgrep-like). Paths are magenta, line numbers green, the
+matched substring bold red; list/tags/links/validate get tasteful tints.
+
+```
+--color auto      colored on a TTY, plain when piped (default)
+--color always    force color (overrides NO_COLOR)
+--color never     force plain
+--no-color        = --color never
+```
+
+`NO_COLOR` (any non-empty value) disables color under `--color auto`. `--json`
+output is never colored.
+
 ## Output
 
 Human by default. `--json` emits the per-mode engine types (indented JSON):
