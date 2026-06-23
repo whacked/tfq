@@ -53,7 +53,7 @@ func formatHits(hits []search.Hit, heading bool, m *regexp.Regexp, p palette) st
 	if !heading {
 		lines := make([]string, len(hits))
 		for i, h := range hits {
-			lines[i] = fmt.Sprintf("%s:%s:%s", p.path(h.Path), p.lineNo(strconv.Itoa(h.Line)), highlight(h.Text, m, p))
+			lines[i] = fmt.Sprintf("%s:%s:%s%s", p.path(h.Path), p.lineNo(strconv.Itoa(h.Line)), highlight(h.Text, m, p), kindTag(h.Kinds, p))
 		}
 		return strings.Join(lines, "\n")
 	}
@@ -70,10 +70,18 @@ func formatHits(hits []search.Hit, heading bool, m *regexp.Regexp, p palette) st
 			flush()
 			cur, curLines = h.Path, nil
 		}
-		curLines = append(curLines, fmt.Sprintf("%s: %s", p.lineNo(strconv.Itoa(h.Line)), highlight(h.Text, m, p)))
+		curLines = append(curLines, fmt.Sprintf("%s: %s%s", p.lineNo(strconv.Itoa(h.Line)), highlight(h.Text, m, p), kindTag(h.Kinds, p)))
 	}
 	flush()
 	return strings.Join(blocks, "\n\n")
+}
+
+// kindTag renders a dim " [heading,tag]" suffix, or "" when a hit is prose-only.
+func kindTag(kinds []string, p palette) string {
+	if len(kinds) == 0 {
+		return ""
+	}
+	return " " + p.dim("["+strings.Join(kinds, ",")+"]")
 }
 
 func filesOf(hits []search.Hit) []string {
@@ -126,22 +134,44 @@ func formatCounts(counts []fileCount, p palette) string {
 	return strings.Join(lines, "\n")
 }
 
-func formatTagsIndex(tags []query.TagCount, p palette) string {
-	if len(tags) == 0 {
+type countPair struct {
+	name  string
+	count int
+}
+
+// formatIndex renders an aligned "name  count" index under a bold header.
+func formatIndex(header string, pairs []countPair, p palette) string {
+	if len(pairs) == 0 {
 		return ""
 	}
 	w := 0
-	for _, t := range tags {
-		if len(t.Tag) > w {
-			w = len(t.Tag)
+	for _, c := range pairs {
+		if len(c.name) > w {
+			w = len(c.name)
 		}
 	}
-	lines := make([]string, len(tags))
-	for i, t := range tags {
-		pad := strings.Repeat(" ", w-len(t.Tag))
-		lines[i] = fmt.Sprintf("  %s%s  %d", p.tag(t.Tag), pad, t.Count)
+	lines := make([]string, len(pairs))
+	for i, c := range pairs {
+		pad := strings.Repeat(" ", w-len(c.name))
+		lines[i] = fmt.Sprintf("  %s%s  %d", p.tag(c.name), pad, c.count)
 	}
-	return p.bold("# tags") + "\n" + strings.Join(lines, "\n")
+	return p.bold(header) + "\n" + strings.Join(lines, "\n")
+}
+
+func formatTagsIndex(tags []query.TagCount, p palette) string {
+	pairs := make([]countPair, len(tags))
+	for i, t := range tags {
+		pairs[i] = countPair{t.Tag, t.Count}
+	}
+	return formatIndex("# tags", pairs, p)
+}
+
+func formatTypesIndex(types []query.TypeCount, p palette) string {
+	pairs := make([]countPair, len(types))
+	for i, t := range types {
+		pairs[i] = countPair{t.Type, t.Count}
+	}
+	return formatIndex("# types", pairs, p)
 }
 
 func formatTagGroups(groups []query.TagGroup, p palette) string {

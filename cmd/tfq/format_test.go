@@ -73,3 +73,23 @@ func TestFormatTagsIndex(t *testing.T) {
 		t.Errorf("tags index wrong:\n%s", out)
 	}
 }
+
+func TestFormatHitsKindLabel(t *testing.T) {
+	hits := []search.Hit{{Path: "a.md", Line: 1, Text: "# Battery", Kinds: []string{"heading"}}}
+	out := formatHits(hits, true, nil, palette{})
+	if !strings.Contains(out, "[heading]") {
+		t.Errorf("expected kind label:\n%s", out)
+	}
+	// prose hit (no kinds) -> no brackets
+	plain := formatHits([]search.Hit{{Path: "a.md", Line: 2, Text: "prose"}}, true, nil, palette{})
+	if strings.Contains(plain, "[") {
+		t.Errorf("prose hit should have no label:\n%s", plain)
+	}
+}
+
+func TestFormatTypesIndex(t *testing.T) {
+	out := formatTypesIndex([]query.TypeCount{{Type: "note", Count: 41}}, palette{})
+	if !strings.Contains(out, "# types") || !strings.Contains(out, "note") || !strings.Contains(out, "41") {
+		t.Errorf("types index wrong:\n%s", out)
+	}
+}
