@@ -82,3 +82,18 @@ func TestParseHeadingDefaultTrue(t *testing.T) {
 		t.Error("--no-heading should clear heading")
 	}
 }
+
+func TestParseColor(t *testing.T) {
+	if inv, _ := parse([]string{"x"}); inv.Color != "auto" {
+		t.Errorf("default color=%q, want auto", inv.Color)
+	}
+	if inv, _ := parse([]string{"x", "--color", "always"}); inv.Color != "always" {
+		t.Errorf("--color always not parsed: %q", inv.Color)
+	}
+	if inv, _ := parse([]string{"x", "--no-color"}); inv.Color != "never" {
+		t.Errorf("--no-color should set never: %q", inv.Color)
+	}
+	if _, err := parse([]string{"x", "--color", "bogus"}); err == nil {
+		t.Error("invalid --color should error")
+	}
+}

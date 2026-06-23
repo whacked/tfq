@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -29,8 +30,13 @@ type linksJSON struct {
 	Inbound  []string     `json:"inbound,omitempty"`
 }
 
-// run returns (stdoutText, exitCode). Pure for testing; main wires it to os.
+// run returns (stdoutText, exitCode). Pure and color-free for testing; main
+// calls runEnv with the real terminal/NO_COLOR state.
 func run(args []string) (string, int) {
+	return runEnv(args, false, false)
+}
+
+func runEnv(args []string, isTTY, noColor bool) (string, int) {
 	if len(args) == 0 {
 		return usage(), 0
 	}
@@ -41,6 +47,7 @@ func run(args []string) (string, int) {
 		}
 		return errln(err), 1
 	}
+	pal := palette{on: decideColor(inv.Color, noColor, isTTY)}
 
 	switch inv.Mode {
 	case ModeHelp:
@@ -61,7 +68,7 @@ func run(args []string) (string, int) {
 		if inv.JSON {
 			return mustJSON(fv), 0
 		}
-		return formatInspect(fv), 0
+		return formatInspect(fv, pal), 0
 	}
 
 	root, rerr := resolveRoot(inv.Root)
@@ -72,7 +79,7 @@ func run(args []string) (string, int) {
 	switch inv.Mode {
 	case ModeSearch:
 		if inv.Selector == "" {
-			return dispatchList(root, inv)
+			return dispatchList(root, inv, pal)
 		}
 		hits, _, serr := search.Search(root, inv.Selector, search.Filters{
 			Type: inv.Type, Status: inv.Status, Tags: inv.Tags, IgnoreCase: inv.IgnoreCase})
@@ -87,22 +94,22 @@ func run(args []string) (string, int) {
 			if inv.JSON {
 				return mustJSON(files), 0
 			}
-			return strings.Join(files, "\n"), 0
+			return formatPaths(files, pal), 0
 		}
 		if inv.Count {
 			counts := countsOf(hits)
 			if inv.JSON {
 				return mustJSON(counts), 0
 			}
-			return formatCounts(counts), 0
+			return formatCounts(counts, pal), 0
 		}
 		if inv.JSON {
 			return mustJSON(hits), 0
 		}
-		return formatHits(hits, inv.Heading), 0
+		return formatHits(hits, inv.Heading, matcher(inv, pal), pal), 0
 
 	case ModeList:
-		return dispatchList(root, inv)
+		return dispatchList(root, inv, pal)
 
 	case ModeShow:
 		if inv.Selector == "" {
@@ -119,9 +126,9 @@ func run(args []string) (string, int) {
 			return rec.Body, 0
 		}
 		if inv.Frontmatter {
-			return formatFrontmatterBlock(rec.Frontmatter), 0
+			return formatFrontmatterBlock(rec.Frontmatter, pal), 0
 		}
-		return formatRecord(rec), 0
+		return formatRecord(rec, pal), 0
 
 	case ModeLinks:
 		if inv.Selector == "" {
@@ -140,7 +147,7 @@ func run(args []string) (string, int) {
 			if inv.JSON {
 				return mustJSON(paths), 0
 			}
-			return strings.Join(paths, "\n"), 0
+			return formatPaths(paths, pal), 0
 		}
 		if inv.JSON {
 			p := linksJSON{Path: inv.Selector}
@@ -152,7 +159,7 @@ func run(args []string) (string, int) {
 			}
 			return mustJSON(p), 0
 		}
-		return formatLinks(inv.Selector, out, in, showOut, showIn), 0
+		return formatLinks(inv.Selector, out, in, showOut, showIn, pal), 0
 
 	case ModeTags:
 		if inv.Selector == "" {
@@ -163,7 +170,7 @@ func run(args []string) (string, int) {
 			if inv.JSON {
 				return mustJSON(tags), 0
 			}
-			return formatTagsIndex(tags), 0
+			return formatTagsIndex(tags, pal), 0
 		}
 		groups, terr := query.TagGroups(root, inv.Selector)
 		if terr != nil {
@@ -172,7 +179,7 @@ func run(args []string) (string, int) {
 		if inv.JSON {
 			return mustJSON(groups), 0
 		}
-		return formatTagGroups(groups), 0
+		return formatTagGroups(groups, pal), 0
 
 	case ModeNext:
 		g, gerr := buildGraph(root)
@@ -191,7 +198,7 @@ func run(args []string) (string, int) {
 		for i, r := range ready {
 			items[i] = query.Summarize(r)
 		}
-		return formatList(items), 0
+		return formatList(items, pal), 0
 
 	case ModeNew:
 		if inv.Selector == "" {
@@ -220,7 +227,7 @@ func run(args []string) (string, int) {
 		if inv.JSON {
 			return mustJSON(res), 0
 		}
-		return formatWrite(res), 0
+		return formatWrite(res, pal), 0
 
 	case ModeSet:
 		if inv.Selector == "" {
@@ -240,7 +247,7 @@ func run(args []string) (string, int) {
 		if inv.JSON {
 			return mustJSON(res), 0
 		}
-		return formatWrite(res), 0
+		return formatWrite(res, pal), 0
 
 	case ModeValidate:
 		rep, verr := validate.Run(root, inv.Strict)
@@ -254,7 +261,7 @@ func run(args []string) (string, int) {
 		if inv.JSON {
 			return mustJSON(rep), code
 		}
-		return formatReport(rep), code
+		return formatReport(rep, pal), code
 
 	case ModeGraph:
 		g, gerr := buildGraph(root)
@@ -265,12 +272,29 @@ func run(args []string) (string, int) {
 		if inv.JSON {
 			return mustJSON(edges), 0
 		}
-		return formatEdges(edges), 0
+		return formatEdges(edges, pal), 0
 	}
 	return usage(), 2
 }
 
-func dispatchList(root string, inv Invocation) (string, int) {
+// matcher compiles the search selector as an RE2 pattern for match
+// highlighting. Returns nil when color is off or the pattern won't compile.
+func matcher(inv Invocation, pal palette) *regexp.Regexp {
+	if !pal.on || inv.Selector == "" {
+		return nil
+	}
+	pat := inv.Selector
+	if inv.IgnoreCase {
+		pat = "(?i)" + pat
+	}
+	m, err := regexp.Compile(pat)
+	if err != nil {
+		return nil
+	}
+	return m
+}
+
+func dispatchList(root string, inv Invocation, pal palette) (string, int) {
 	items, lerr := query.List(root, query.ListFilters{Status: inv.Status, Type: inv.Type, Tags: inv.Tags})
 	if lerr != nil {
 		return errln(lerr), 1
@@ -284,7 +308,7 @@ func dispatchList(root string, inv Invocation) (string, int) {
 	if inv.JSON {
 		return mustJSON(items), 0
 	}
-	return formatList(items), 0
+	return formatList(items, pal), 0
 }
 
 func filterItems(items []query.ListItem, sel string) []query.ListItem {
@@ -401,12 +425,18 @@ func usage() string {
 		"",
 		"Filters:  --type T   --tag T (repeatable)   --status S   --limit N",
 		"Search:   -i/--ignore-case   -l/--files-with-matches   -c/--count   --heading/--no-heading",
-		"Output:   --json   --root DIR (else $TFQ_ROOT, ancestor .tfq.*, cwd)   -e/--query PATTERN",
+		"Root:     --root DIR   (else $TFQ_ROOT, then nearest ancestor with",
+		"          .tfq.cue/.tfq.yaml/.tfq/, then the current directory)",
+		"Output:   --json   --color auto|always|never   --no-color   -e/--query PATTERN",
 	}, "\n")
 }
 
 func main() {
-	out, code := run(os.Args[1:])
+	isTTY := false
+	if fi, err := os.Stdout.Stat(); err == nil {
+		isTTY = fi.Mode()&os.ModeCharDevice != 0
+	}
+	out, code := runEnv(os.Args[1:], isTTY, os.Getenv("NO_COLOR") != "")
 	if out != "" {
 		if code == 0 {
 			fmt.Println(out)

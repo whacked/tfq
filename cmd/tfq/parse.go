@@ -49,6 +49,7 @@ type Invocation struct {
 	Outbound bool
 
 	Strict bool
+	Color  string // auto | always | never
 
 	Fields map[string]string
 }
@@ -79,7 +80,7 @@ func shortName(s string) string {
 // values) join into the selector; -- stops flag parsing; exactly one primary
 // mode flag is allowed.
 func parse(raw []string) (Invocation, error) {
-	inv := Invocation{Mode: ModeSearch, Heading: true, Fields: map[string]string{}}
+	inv := Invocation{Mode: ModeSearch, Heading: true, Color: "auto", Fields: map[string]string{}}
 	var sel []string
 	modeFlag := "" // the mode flag already chosen (for the "one mode" error)
 
@@ -286,6 +287,20 @@ func parse(raw []string) (Invocation, error) {
 		// validate
 		case "strict":
 			inv.Strict = true
+		// color
+		case "color":
+			v, err := needVal()
+			if err != nil {
+				return inv, err
+			}
+			switch v {
+			case "auto", "always", "never":
+				inv.Color = v
+			default:
+				return inv, usageErr("--color must be auto|always|never, got " + v)
+			}
+		case "no-color":
+			inv.Color = "never"
 		default:
 			return inv, usageErr("unknown flag --" + name)
 		}

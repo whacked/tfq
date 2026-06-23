@@ -1,6 +1,7 @@
 package main
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -15,13 +16,24 @@ func TestFormatHitsHeading(t *testing.T) {
 		{Path: "a.md", Line: 37, Text: "supply risk"},
 		{Path: "b.md", Line: 8, Text: "cathode"},
 	}
-	out := formatHits(hits, true)
+	out := formatHits(hits, true, nil, palette{})
 	if !strings.Contains(out, "a.md\n12: model battery\n37: supply risk") {
 		t.Errorf("heading output wrong:\n%s", out)
 	}
-	flat := formatHits(hits, false)
+	flat := formatHits(hits, false, nil, palette{})
 	if !strings.Contains(flat, "a.md:12:model battery") {
 		t.Errorf("no-heading output wrong:\n%s", flat)
+	}
+}
+
+func TestFormatHitsColor(t *testing.T) {
+	hits := []search.Hit{{Path: "a.md", Line: 1, Text: "the needle here"}}
+	out := formatHits(hits, true, regexp.MustCompile("needle"), palette{on: true})
+	if !strings.Contains(out, "\x1b[35;1ma.md\x1b[0m") {
+		t.Errorf("path not colored:\n%q", out)
+	}
+	if !strings.Contains(out, "\x1b[1;31mneedle\x1b[0m") {
+		t.Errorf("match not highlighted:\n%q", out)
 	}
 }
 
@@ -37,7 +49,7 @@ func TestFilesAndCounts(t *testing.T) {
 }
 
 func TestFormatListBlock(t *testing.T) {
-	out := formatList([]query.ListItem{{Path: "x.md", Type: "task", Status: "pending", Tags: []string{"a"}, Title: "Do X"}})
+	out := formatList([]query.ListItem{{Path: "x.md", Type: "task", Status: "pending", Tags: []string{"a"}, Title: "Do X"}}, palette{})
 	if !strings.Contains(out, "x.md  task pending #a") || !strings.Contains(out, "title: Do X") {
 		t.Errorf("list block wrong:\n%s", out)
 	}
@@ -46,7 +58,7 @@ func TestFormatListBlock(t *testing.T) {
 func TestFormatLinksBothDirections(t *testing.T) {
 	out := formatLinks("a.md",
 		[]graph.Edge{{From: "a.md", Kind: "wiki", Raw: "b", To: "b.md"}},
-		[]string{"c.md"}, true, true)
+		[]string{"c.md"}, true, true, palette{})
 	if !strings.Contains(out, "# outbound links") || !strings.Contains(out, "==> b.md") {
 		t.Errorf("missing outbound:\n%s", out)
 	}
@@ -56,7 +68,7 @@ func TestFormatLinksBothDirections(t *testing.T) {
 }
 
 func TestFormatTagsIndex(t *testing.T) {
-	out := formatTagsIndex([]query.TagCount{{Tag: "battery", Count: 42}})
+	out := formatTagsIndex([]query.TagCount{{Tag: "battery", Count: 42}}, palette{})
 	if !strings.Contains(out, "battery") || !strings.Contains(out, "42") {
 		t.Errorf("tags index wrong:\n%s", out)
 	}
