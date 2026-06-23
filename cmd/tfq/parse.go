@@ -15,6 +15,7 @@ const (
 	ModeShow
 	ModeLinks
 	ModeTags
+	ModeTypes
 	ModeNext
 	ModeNew
 	ModeSet
@@ -35,6 +36,7 @@ type Invocation struct {
 	Type   string
 	Status string
 	Tags   []string
+	In     []string
 	Limit  int
 
 	IgnoreCase bool
@@ -156,6 +158,10 @@ func parse(raw []string) (Invocation, error) {
 			if err := setMode(ModeTags, name); err != nil {
 				return inv, err
 			}
+		case "types":
+			if err := setMode(ModeTypes, name); err != nil {
+				return inv, err
+			}
 		case "next":
 			if err := setMode(ModeNext, name); err != nil {
 				return inv, err
@@ -243,6 +249,17 @@ func parse(raw []string) (Invocation, error) {
 				return inv, err
 			}
 			inv.Tags = append(inv.Tags, v)
+		case "in":
+			v, err := needVal()
+			if err != nil {
+				return inv, err
+			}
+			switch v {
+			case "heading", "tag", "link":
+				inv.In = append(inv.In, v)
+			default:
+				return inv, usageErr("--in must be heading|tag|link, got " + v)
+			}
 		case "limit":
 			v, err := needVal()
 			if err != nil {

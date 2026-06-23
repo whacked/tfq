@@ -97,3 +97,19 @@ func TestParseColor(t *testing.T) {
 		t.Error("invalid --color should error")
 	}
 }
+
+func TestParseInAndTypes(t *testing.T) {
+	inv, err := parse([]string{"battery", "--in", "heading", "--in", "tag"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(inv.In, []string{"heading", "tag"}) {
+		t.Errorf("In = %#v", inv.In)
+	}
+	if _, err := parse([]string{"x", "--in", "bullet"}); err == nil {
+		t.Error("invalid --in should error")
+	}
+	if inv, _ := parse([]string{"--types"}); inv.Mode != ModeTypes {
+		t.Errorf("--types mode = %v", inv.Mode)
+	}
+}
