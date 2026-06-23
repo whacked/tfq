@@ -10,7 +10,8 @@
     "properties": {
       "path": { "type": "string" },
       "line": { "type": "integer", "minimum": 1 },
-      "text": { "type": "string" }
+      "text": { "type": "string" },
+      "kinds": { "type": "array", "items": { "enum": ["heading", "tag", "link"] } }
     }
   }
 }

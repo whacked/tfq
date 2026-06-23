@@ -91,3 +91,46 @@ func TestSearchStatusFilter(t *testing.T) {
 		t.Errorf("status filter got %#v, want only b.md", hits)
 	}
 }
+
+func TestSearchInHeading(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "a.md", "# Battery supply\nbattery in prose\n")
+	hits, _, _ := Search(dir, "battery", Filters{IgnoreCase: true, In: []string{"heading"}})
+	if len(hits) != 1 || hits[0].Line != 1 {
+		t.Fatalf("--in heading should keep only the heading line, got %#v", hits)
+	}
+}
+
+func TestSearchInTag(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "a.md", "tracking #battery rollout\nbattery in prose\n")
+	hits, _, _ := Search(dir, "battery", Filters{In: []string{"tag"}})
+	if len(hits) != 1 || hits[0].Line != 1 {
+		t.Fatalf("--in tag should keep only the #battery line, got %#v", hits)
+	}
+}
+
+func TestSearchInLink(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "a.md", "see [[battery-spec]] here\nbattery in prose\n")
+	hits, _, _ := Search(dir, "battery", Filters{In: []string{"link"}})
+	if len(hits) != 1 || hits[0].Line != 1 {
+		t.Fatalf("--in link should keep only the link line, got %#v", hits)
+	}
+}
+
+func TestSearchKindsPopulated(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "a.md", "# Battery notes\njust battery prose\n")
+	hits, _, _ := Search(dir, "battery", Filters{IgnoreCase: true})
+	byLine := map[int][]string{}
+	for _, h := range hits {
+		byLine[h.Line] = h.Kinds
+	}
+	if len(byLine[1]) != 1 || byLine[1][0] != "heading" {
+		t.Errorf("line 1 kinds = %#v, want [heading]", byLine[1])
+	}
+	if len(byLine[2]) != 0 {
+		t.Errorf("prose line kinds = %#v, want empty", byLine[2])
+	}
+}

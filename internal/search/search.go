@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -12,18 +13,21 @@ import (
 	"tfq/internal/model"
 )
 
-// Hit is a single ripgrep match.
+// Hit is a single ripgrep match, classified by the structure it lands in.
 type Hit struct {
-	Path string `json:"path"`
-	Line int    `json:"line"`
-	Text string `json:"text"`
+	Path  string   `json:"path"`
+	Line  int      `json:"line"`
+	Text  string   `json:"text"`
+	Kinds []string `json:"kinds,omitempty"` // any of heading|tag|link
 }
 
-// Filters narrows hits by frontmatter (AND semantics; empty matches all).
+// Filters narrows hits by frontmatter (AND semantics; empty matches all). In
+// restricts hits to those landing in the named structures (heading|tag|link).
 type Filters struct {
 	Type       string
 	Status     string
 	Tags       []string
+	In         []string
 	IgnoreCase bool
 }
 
@@ -73,6 +77,16 @@ func Search(root, query string, f Filters) ([]Hit, []model.Warning, error) {
 		return v, true
 	}
 
+	var qre *regexp.Regexp
+	pat := query
+	if f.IgnoreCase {
+		pat = "(?i)" + pat
+	}
+	if r, cerr := regexp.Compile(pat); cerr == nil {
+		qre = r
+	}
+	hasFilters := f.Type != "" || f.Status != "" || len(f.Tags) > 0
+
 	hits := []Hit{}
 	for _, line := range strings.Split(string(out), "\n") {
 		if line == "" {
@@ -83,20 +97,26 @@ func Search(root, query string, f Filters) ([]Hit, []model.Warning, error) {
 			continue
 		}
 		abs := ev.Data.Path.Text
-		if f.Type != "" || f.Status != "" || len(f.Tags) > 0 {
-			v, ok := inspect(abs)
-			if !ok || !passesFilters(v, f) {
-				continue
-			}
+		v, ok := inspect(abs)
+		if hasFilters && (!ok || !passesFilters(v, f)) {
+			continue
+		}
+		var kinds []string
+		if ok {
+			kinds = classify(v, ev.Data.LineNumber, qre, query, f.IgnoreCase)
+		}
+		if len(f.In) > 0 && !anyIn(kinds, f.In) {
+			continue
 		}
 		rel, rerr := filepath.Rel(root, abs)
 		if rerr != nil {
 			rel = abs
 		}
 		hits = append(hits, Hit{
-			Path: filepath.ToSlash(rel),
-			Line: ev.Data.LineNumber,
-			Text: strings.TrimRight(ev.Data.Lines.Text, "\n"),
+			Path:  filepath.ToSlash(rel),
+			Line:  ev.Data.LineNumber,
+			Text:  strings.TrimRight(ev.Data.Lines.Text, "\n"),
+			Kinds: kinds,
 		})
 	}
 	sort.Slice(hits, func(i, j int) bool {
@@ -127,6 +147,62 @@ func passesFilters(v model.FileVitals, f Filters) bool {
 		}
 	}
 	return true
+}
+
+// classify labels a hit by the structural elements on its line whose value
+// matches the query (headings match by line alone).
+func classify(v model.FileVitals, line int, q *regexp.Regexp, raw string, ic bool) []string {
+	kinds := []string{}
+	for _, h := range v.Headings {
+		if h.Line == line {
+			kinds = append(kinds, "heading")
+			break
+		}
+	}
+	for _, m := range v.Markers {
+		if (m.Kind == model.MarkerHashtag || m.Kind == model.MarkerOrgTag) && m.Line == line && matchVal(m.Value, q, raw, ic) {
+			kinds = append(kinds, "tag")
+			break
+		}
+	}
+	for _, l := range v.Links {
+		label := ""
+		if l.Label != nil {
+			label = *l.Label
+		}
+		if l.Line == line && (matchVal(l.Target, q, raw, ic) || matchVal(label, q, raw, ic)) {
+			kinds = append(kinds, "link")
+			break
+		}
+	}
+	return kinds
+}
+
+// matchVal reports whether val matches the query (regexp when it compiled,
+// else case-aware substring).
+func matchVal(val string, q *regexp.Regexp, raw string, ic bool) bool {
+	if val == "" {
+		return false
+	}
+	if q != nil {
+		return q.MatchString(val)
+	}
+	if ic {
+		return strings.Contains(strings.ToLower(val), strings.ToLower(raw))
+	}
+	return strings.Contains(val, raw)
+}
+
+// anyIn reports whether any element of have is in want.
+func anyIn(have, want []string) bool {
+	for _, h := range have {
+		for _, w := range want {
+			if h == w {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func hasTag(v model.FileVitals, tag string) bool {
