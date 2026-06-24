@@ -160,10 +160,11 @@ notes/2026-06-001-battery.md
 
 ## 6. Docs
 
-- `VOCABULARY.md`: document `--in`, hit kinds, `--types`, the `type:` clarity,
-  and that `--new` now writes `type:`. Move `--type` out of any "structural"
-  reading.
-- `HANDOFF.md`: note structural-narrowing + `--types` in the surface/changelog.
+Docs were consolidated this pass: `HANDOFF.md` and `VOCABULARY.md` were folded
+into a single brief `README.md` (usage + agent onboarding) and deleted. The
+README documents `--in`, hit kinds, `--types`, the `--type` = frontmatter-field
+clarity, and that `--new` writes `type:`. Deep design history stays in
+`docs/superpowers/specs/` + `plans/`.
 
 ## 7. Invariants preserved
 
