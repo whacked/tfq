@@ -82,7 +82,7 @@ func runEnv(args []string, isTTY, noColor bool) (string, int) {
 			return dispatchList(root, inv, pal)
 		}
 		hits, _, serr := search.Search(root, inv.Selector, search.Filters{
-			Type: inv.Type, Status: inv.Status, Tags: inv.Tags, IgnoreCase: inv.IgnoreCase})
+			Type: inv.Type, Status: inv.Status, Tags: inv.Tags, In: inv.In, IgnoreCase: inv.IgnoreCase})
 		if serr != nil {
 			return errln(serr), 1
 		}
@@ -181,6 +181,16 @@ func runEnv(args []string, isTTY, noColor bool) (string, int) {
 		}
 		return formatTagGroups(groups, pal), 0
 
+	case ModeTypes:
+		types, terr := query.Types(root)
+		if terr != nil {
+			return errln(terr), 1
+		}
+		if inv.JSON {
+			return mustJSON(types), 0
+		}
+		return formatTypesIndex(types, pal), 0
+
 	case ModeNext:
 		g, gerr := buildGraph(root)
 		if gerr != nil {
@@ -211,6 +221,9 @@ func runEnv(args []string, isTTY, noColor bool) (string, int) {
 		fields := map[string]string{}
 		for k, v := range inv.Fields {
 			fields[k] = v
+		}
+		if inv.Type != "" {
+			fields["type"] = inv.Type // explicit --type wins over the template default
 		}
 		if inv.Status != "" {
 			fields["status"] = inv.Status
@@ -411,6 +424,7 @@ func usage() string {
 		"  --show REF                show one record (--raw, --frontmatter)",
 		"  --links REF               outbound + inbound links (--inbound/--outbound)",
 		"  --tags [QUERY]            tag index / tag search",
+		"  --types                   frontmatter type: index",
 		"  --next [QUERY]            ready tasks (deps satisfied)",
 		"  --new SLUG                create record (--type, --tag, --status, --field)",
 		"  --set REF                 update record (--status, --tag, --field)",
@@ -423,8 +437,9 @@ func usage() string {
 		"Aliases: --task (=--new --type task), --backlinks (=--links --inbound),",
 		"         --outlinks/--forward-links (=--links --outbound)",
 		"",
-		"Filters:  --type T   --tag T (repeatable)   --status S   --limit N",
+		"Filters:  --type T (frontmatter type:)   --tag T (repeatable)   --status S   --limit N",
 		"Search:   -i/--ignore-case   -l/--files-with-matches   -c/--count   --heading/--no-heading",
+		"          --in heading|tag|link   narrow matches to a structural element (repeatable)",
 		"Root:     --root DIR   (else $TFQ_ROOT, then nearest ancestor with",
 		"          .tfq.cue/.tfq.yaml/.tfq/, then the current directory)",
 		"Output:   --json   --color auto|always|never   --no-color   -e/--query PATTERN",

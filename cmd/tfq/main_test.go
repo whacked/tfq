@@ -169,3 +169,30 @@ func TestRunInspectAndValidate(t *testing.T) {
 		t.Errorf("strict validate over bad record should exit 1, got %d", code)
 	}
 }
+
+func TestRunInNarrowing(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "head.md", "# battery supply\nunrelated text\n")
+	mustWrite(t, dir, "prose.md", "battery in prose here\n")
+	out, code := run([]string{"--root", dir, "battery", "--in", "heading", "-l"})
+	if code != 0 || strings.TrimSpace(out) != "head.md" {
+		t.Errorf("--in heading -l should yield only head.md: code=%d out=%q", code, out)
+	}
+}
+
+func TestRunTypesAndNewType(t *testing.T) {
+	dir := t.TempDir()
+	if _, code := run([]string{"--root", dir, "--new", "job", "--type", "task"}); code != 0 {
+		t.Fatal("new task failed")
+	}
+	// --type filter now finds the tfq-created task (type: task was written)
+	out, code := run([]string{"--root", dir, "--type", "task"})
+	if code != 0 || !contains(out, "job") {
+		t.Errorf("--type task filter should find job: %s", out)
+	}
+	// --types lists the value via the types index
+	out, code = run([]string{"--root", dir, "--types"})
+	if code != 0 || !contains(out, "# types") || !contains(out, "task") {
+		t.Errorf("--types should print the type index: code=%d %s", code, out)
+	}
+}
