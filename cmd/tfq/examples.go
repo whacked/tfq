@@ -93,8 +93,8 @@ Examples (run against a small sample collection):
 	}
 	b.WriteString(`
 Writing & validating (output depends on date/path, so not shown):
-  tfq --new SLUG --type note --tag x                  create a note
-  tfq --task "Audit vendors" --priority high          create a task (--type task)
+  tfq --new SLUG --type note --tag x                  create a note (SLUG is [a-z0-9-]+)
+  tfq --task --title "Audit vendors" --priority high  create a task; title auto-slugs the path
   tfq --set REF --status in-progress                  update frontmatter
   tfq --set REF --depends-on 001,002                  set blocking dependencies
   tfq --done REF                                      mark a task done

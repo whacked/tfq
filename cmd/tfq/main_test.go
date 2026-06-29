@@ -205,6 +205,23 @@ func TestRunDependsOnPorcelain(t *testing.T) {
 	}
 }
 
+func TestRunTaskTitleAutoSlugs(t *testing.T) {
+	dir := t.TempDir()
+	// taskmd-style: free-text title, no manual slug
+	out, code := run([]string{"--root", dir, "--task", "--title", "Audit Battery Vendors", "--priority", "high"})
+	if code != 0 {
+		t.Fatalf("create by title failed (%d): %s", code, out)
+	}
+	if !contains(out, "audit-battery-vendors") {
+		t.Errorf("path should use the slugified title: %s", out)
+	}
+	// the verbatim title is preserved in frontmatter, found by --show
+	show, _ := run([]string{"--root", dir, "--show", "audit-battery-vendors", "--frontmatter"})
+	if !contains(show, "title: Audit Battery Vendors") {
+		t.Errorf("verbatim title should be stored: %s", show)
+	}
+}
+
 func TestRunValidateFileAgainstSchema(t *testing.T) {
 	dir := t.TempDir()
 	// schema lives in a markdown template, like agent-resources' *.cue.template.md

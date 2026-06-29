@@ -214,7 +214,13 @@ func runEnv(args []string, isTTY, noColor bool) (string, int) {
 		return formatList(items, pal), 0
 
 	case ModeNew:
-		if inv.Selector == "" {
+		// A free-text --title slugifies into the path when no explicit slug is
+		// given (taskmd add "Title" parity); the verbatim title is preserved.
+		slug := inv.Selector
+		if slug == "" && inv.Title != "" {
+			slug = slugify(inv.Title)
+		}
+		if slug == "" {
 			return needSelector("--new")
 		}
 		tmpl := layout.TemplateNote
@@ -228,15 +234,18 @@ func runEnv(args []string, isTTY, noColor bool) (string, int) {
 		if inv.Type != "" {
 			fields["type"] = inv.Type // explicit --type wins over the template default
 		}
+		if inv.Title != "" {
+			fields["title"] = inv.Title
+		}
 		if inv.Status != "" {
 			fields["status"] = inv.Status
 		}
-		res, nerr := store.New(root, tmpl, inv.Selector, fields, time.Now(), layout.DefaultConfig())
+		res, nerr := store.New(root, tmpl, slug, fields, time.Now(), layout.DefaultConfig())
 		if nerr != nil {
 			return errln(nerr), 1
 		}
 		if len(inv.Tags) > 0 || len(inv.DependsOn) > 0 {
-			if _, serr := store.SetWith(root, inv.Selector, nil, inv.Tags, dependencyLists(inv)); serr != nil {
+			if _, serr := store.SetWith(root, slug, nil, inv.Tags, dependencyLists(inv)); serr != nil {
 				return errln(serr), 1
 			}
 		}
@@ -391,6 +400,27 @@ func dependencyLists(inv Invocation) map[string][]string {
 	return map[string][]string{"dependencies": inv.DependsOn}
 }
 
+// slugify turns a free-text title into a [a-z0-9-]+ slug: lowercase, runs of
+// non-alphanumerics collapse to a single hyphen, leading/trailing hyphens
+// trimmed. (taskmd add "Title" → tfq derives the slug.)
+func slugify(s string) string {
+	var b strings.Builder
+	prevHyphen := false
+	for _, r := range strings.ToLower(s) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			prevHyphen = false
+		default:
+			if !prevHyphen && b.Len() > 0 {
+				b.WriteByte('-')
+				prevHyphen = true
+			}
+		}
+	}
+	return strings.TrimRight(b.String(), "-")
+}
+
 func needSelector(mode string) (string, int) {
 	return "tfq: " + mode + " requires a selector\n\n" + usage(), 2
 }
@@ -447,7 +477,7 @@ func usage() string {
 		"  --tags [QUERY]            tag index / tag search",
 		"  --types                   frontmatter type: index",
 		"  --next [QUERY]            ready tasks (deps satisfied)",
-		"  --new SLUG                create record (--type, --tag, --status, --field)",
+		"  --new SLUG                create record (--type, --title, --tag, --status, --field)",
 		"  --set REF                 update record (--status, --tag, --field)",
 		"  --done REF                mark task done",
 		"  --validate [FILE]         validate collection, or one FILE (--strict, --schema PATH)",

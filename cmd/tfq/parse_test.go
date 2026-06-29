@@ -128,6 +128,30 @@ func TestParsePorcelainTaskFlags(t *testing.T) {
 	}
 }
 
+func TestParseTitle(t *testing.T) {
+	inv, err := parse([]string{"--task", "--title", "Audit Vendors"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.Title != "Audit Vendors" {
+		t.Errorf("Title = %q", inv.Title)
+	}
+}
+
+func TestSlugify(t *testing.T) {
+	cases := map[string]string{
+		"Audit Vendors":      "audit-vendors",
+		"  Spaces & Punct! ": "spaces-punct",
+		"already-a-slug":     "already-a-slug",
+		"CamelCase":          "camelcase",
+	}
+	for in, want := range cases {
+		if got := slugify(in); got != want {
+			t.Errorf("slugify(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestParseSchema(t *testing.T) {
 	inv, err := parse([]string{"--validate", "note.md", "--schema", "tpl.cue"})
 	if err != nil {

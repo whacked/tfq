@@ -35,6 +35,7 @@ type Invocation struct {
 
 	Type      string
 	Status    string
+	Title     string // --title: verbatim title; slugified for the path when no slug given
 	Tags      []string
 	In        []string
 	DependsOn []string
@@ -253,6 +254,12 @@ func parse(raw []string) (Invocation, error) {
 				return inv, err
 			}
 			inv.Status = v
+		case "title":
+			v, err := needVal()
+			if err != nil {
+				return inv, err
+			}
+			inv.Title = v
 		case "tag":
 			v, err := needVal()
 			if err != nil {
