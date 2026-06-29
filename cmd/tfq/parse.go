@@ -33,11 +33,12 @@ type Invocation struct {
 	Root     string
 	JSON     bool
 
-	Type   string
-	Status string
-	Tags   []string
-	In     []string
-	Limit  int
+	Type      string
+	Status    string
+	Tags      []string
+	In        []string
+	DependsOn []string
+	Limit     int
 
 	IgnoreCase bool
 	FilesOnly  bool
@@ -281,6 +282,23 @@ func parse(raw []string) (Invocation, error) {
 				return inv, usageErr("--field needs k=v, got " + v)
 			}
 			inv.Fields[v[:eq]] = v[eq+1:]
+		// porcelain task fields — scalar sugar over --field k=v
+		case "priority", "effort", "parent":
+			v, err := needVal()
+			if err != nil {
+				return inv, err
+			}
+			inv.Fields[name] = v
+		case "depends-on":
+			v, err := needVal()
+			if err != nil {
+				return inv, err
+			}
+			for _, d := range strings.Split(v, ",") {
+				if d = strings.TrimSpace(d); d != "" {
+					inv.DependsOn = append(inv.DependsOn, d)
+				}
+			}
 		// search output
 		case "ignore-case":
 			inv.IgnoreCase = true

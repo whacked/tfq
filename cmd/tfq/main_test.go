@@ -180,6 +180,31 @@ func TestRunInNarrowing(t *testing.T) {
 	}
 }
 
+func TestRunDependsOnPorcelain(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"alpha", "beta", "gamma"} {
+		if _, code := run([]string{"--root", dir, "--task", name}); code != 0 {
+			t.Fatalf("new task %s failed", name)
+		}
+	}
+	// gamma blocked on both alpha and beta via one porcelain flag
+	if _, code := run([]string{"--root", dir, "--set", "gamma", "--depends-on", "alpha,beta"}); code != 0 {
+		t.Fatal("set depends-on failed")
+	}
+	out, _ := run([]string{"--root", dir, "--next"})
+	if !contains(out, "alpha") || !contains(out, "beta") || contains(out, "gamma") {
+		t.Errorf("gamma should be gated until alpha+beta done: %s", out)
+	}
+	// completing only one leaves gamma blocked (proves two distinct edges)
+	if _, code := run([]string{"--root", dir, "--done", "alpha"}); code != 0 {
+		t.Fatal("done alpha failed")
+	}
+	out, _ = run([]string{"--root", dir, "--next"})
+	if contains(out, "gamma") {
+		t.Errorf("gamma still blocked by beta, should not be ready: %s", out)
+	}
+}
+
 func TestRunValidateFileAgainstSchema(t *testing.T) {
 	dir := t.TempDir()
 	// schema lives in a markdown template, like agent-resources' *.cue.template.md

@@ -14,6 +14,12 @@ import (
 // Set mutates the frontmatter of the record ref resolves to, preserving body
 // and existing key order.
 func Set(root, ref string, changes map[string]string, addTags []string) (WriteResult, error) {
+	return SetWith(root, ref, changes, addTags, nil)
+}
+
+// SetWith is Set with list-valued fields (e.g. dependencies), each written as a
+// YAML sequence so the graph resolves one edge per element.
+func SetWith(root, ref string, changes map[string]string, addTags []string, lists map[string][]string) (WriteResult, error) {
 	recs, _, err := scan.Collect(root)
 	if err != nil {
 		return WriteResult{}, err
@@ -32,7 +38,7 @@ func Set(root, ref string, changes map[string]string, addTags []string) (WriteRe
 	if err != nil {
 		return WriteResult{}, err
 	}
-	updated, err := rewriteFrontmatter(string(b), changes, addTags)
+	updated, err := rewriteFrontmatter(string(b), changes, addTags, lists)
 	if err != nil {
 		return WriteResult{}, err
 	}
@@ -42,8 +48,8 @@ func Set(root, ref string, changes map[string]string, addTags []string) (WriteRe
 	return WriteResult{Path: rel, Action: "updated"}, nil
 }
 
-// rewriteFrontmatter applies changes/addTags to the leading --- block.
-func rewriteFrontmatter(content string, changes map[string]string, addTags []string) (string, error) {
+// rewriteFrontmatter applies changes/addTags/lists to the leading --- block.
+func rewriteFrontmatter(content string, changes map[string]string, addTags []string, lists map[string][]string) (string, error) {
 	lines := strings.Split(content, "\n")
 	if len(lines) == 0 || strings.TrimRight(lines[0], "\r") != "---" {
 		return "", fmt.Errorf("no frontmatter block to modify")
@@ -75,6 +81,9 @@ func rewriteFrontmatter(content string, changes map[string]string, addTags []str
 
 	for k, v := range changes {
 		setScalar(mapping, k, v)
+	}
+	for k, vs := range lists {
+		setList(mapping, k, vs)
 	}
 	for _, tag := range addTags {
 		appendTag(mapping, tag)
@@ -108,6 +117,26 @@ func setScalar(mapping *yaml.Node, key, value string) {
 		&yaml.Node{Kind: yaml.ScalarNode, Value: key},
 		&yaml.Node{Kind: yaml.ScalarNode, Value: value},
 	)
+}
+
+// setList sets key to a YAML sequence of values, replacing any existing value.
+// Empty values is a no-op (leaves the field untouched).
+func setList(mapping *yaml.Node, key string, values []string) {
+	if len(values) == 0 {
+		return
+	}
+	seq := &yaml.Node{Kind: yaml.SequenceNode, Style: yaml.FlowStyle}
+	for _, v := range values {
+		// Tag !!str so refs like "002" round-trip as strings, not ints (which the
+		// graph's edge extractor ignores).
+		seq.Content = append(seq.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v})
+	}
+	if v := findValue(mapping, key); v != nil {
+		*v = *seq
+		return
+	}
+	mapping.Content = append(mapping.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Value: key}, seq)
 }
 
 func appendTag(mapping *yaml.Node, tag string) {

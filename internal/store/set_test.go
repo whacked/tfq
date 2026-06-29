@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"tfq/internal/graph"
+	"tfq/internal/scan"
 )
 
 func TestSetStatusAndTag(t *testing.T) {
@@ -69,5 +72,33 @@ func TestSetAmbiguousRefIsError(t *testing.T) {
 	_, err := Set(root, "dup", map[string]string{"status": "done"}, nil)
 	if err == nil || !strings.Contains(err.Error(), "ambiguous") {
 		t.Fatalf("expected ambiguous-reference error, got %v", err)
+	}
+}
+
+func TestSetWithWritesDependencyList(t *testing.T) {
+	root := t.TempDir()
+	for _, id := range []string{"001", "002", "003"} {
+		p := filepath.Join(root, id+".md")
+		if err := os.WriteFile(p, []byte("---\nid: \""+id+"\"\nstatus: pending\n---\n# "+id+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := SetWith(root, "001", nil, nil, map[string][]string{"dependencies": {"002", "003"}}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(root, "001.md"))
+	s := string(b)
+	if !strings.Contains(s, "002") || !strings.Contains(s, "003") {
+		t.Errorf("both deps should be written:\n%s", s)
+	}
+	// resolves as two distinct blocking edges, not one "002,003" scalar
+	recs, _, err := scan.Collect(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := graph.Build(recs, graph.DefaultOptions())
+	out := g.Forward("001")
+	if len(out) != 2 {
+		t.Errorf("expected 2 resolved dependency edges, got %d: %#v", len(out), out)
 	}
 }

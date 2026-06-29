@@ -114,6 +114,20 @@ func TestParseInAndTypes(t *testing.T) {
 	}
 }
 
+func TestParsePorcelainTaskFlags(t *testing.T) {
+	inv, err := parse([]string{"--task", "build", "--priority", "high", "--effort", "small",
+		"--parent", "001", "--depends-on", "002,003", "--depends-on", "004"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.Fields["priority"] != "high" || inv.Fields["effort"] != "small" || inv.Fields["parent"] != "001" {
+		t.Errorf("scalar porcelain flags not mapped to Fields: %#v", inv.Fields)
+	}
+	if !reflect.DeepEqual(inv.DependsOn, []string{"002", "003", "004"}) {
+		t.Errorf("--depends-on should split on comma and accumulate: %#v", inv.DependsOn)
+	}
+}
+
 func TestParseSchema(t *testing.T) {
 	inv, err := parse([]string{"--validate", "note.md", "--schema", "tpl.cue"})
 	if err != nil {

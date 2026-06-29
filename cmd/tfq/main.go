@@ -232,8 +232,8 @@ func runEnv(args []string, isTTY, noColor bool) (string, int) {
 		if nerr != nil {
 			return errln(nerr), 1
 		}
-		if len(inv.Tags) > 0 {
-			if _, serr := store.Set(root, inv.Selector, nil, inv.Tags); serr != nil {
+		if len(inv.Tags) > 0 || len(inv.DependsOn) > 0 {
+			if _, serr := store.SetWith(root, inv.Selector, nil, inv.Tags, dependencyLists(inv)); serr != nil {
 				return errln(serr), 1
 			}
 		}
@@ -253,7 +253,7 @@ func runEnv(args []string, isTTY, noColor bool) (string, int) {
 		if inv.Status != "" {
 			fields["status"] = inv.Status
 		}
-		res, serr := store.Set(root, inv.Selector, fields, inv.Tags)
+		res, serr := store.SetWith(root, inv.Selector, fields, inv.Tags, dependencyLists(inv))
 		if serr != nil {
 			return errln(serr), 1
 		}
@@ -379,6 +379,15 @@ func hasAllTags(have, want []string) bool {
 	return true
 }
 
+// dependencyLists maps --depends-on into the store's list-field form, or nil
+// when none were given (so existing dependencies are left untouched).
+func dependencyLists(inv Invocation) map[string][]string {
+	if len(inv.DependsOn) == 0 {
+		return nil
+	}
+	return map[string][]string{"dependencies": inv.DependsOn}
+}
+
 func needSelector(mode string) (string, int) {
 	return "tfq: " + mode + " requires a selector\n\n" + usage(), 2
 }
@@ -447,6 +456,7 @@ func usage() string {
 		"         --outlinks/--forward-links (=--links --outbound)",
 		"",
 		"Filters:  --type T (frontmatter type:)   --tag T (repeatable)   --status S   --limit N",
+		"Task fields (--new/--set): --priority P  --effort E  --parent REF  --depends-on REF[,REF]",
 		"Search:   -i/--ignore-case   -l/--files-with-matches   -c/--count   --heading/--no-heading",
 		"          --in heading|tag|link   narrow matches to a structural element (repeatable)",
 		"Root:     --root DIR   (else $TFQ_ROOT, then nearest ancestor with",
