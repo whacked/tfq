@@ -3,6 +3,7 @@ package cueschema
 import (
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLoadAndEdgeFields(t *testing.T) {
@@ -56,5 +57,24 @@ func TestLoadExtractsCueFromMarkdown(t *testing.T) {
 	bad := map[string]any{"date": "nope", "author": "agent", "slug": "ok-slug"}
 	if vs := s.Validate(bad); len(vs) == 0 {
 		t.Error("bad date should fail the extracted schema")
+	}
+}
+
+// YAML parses an unquoted `date: 2026-06-30` into a time.Time. CUE would
+// otherwise encode that as an RFC3339 timestamp and fail a string-regex schema
+// that `cue vet` passes — so Validate must normalize a midnight time back to a
+// YYYY-MM-DD string. (Faithful subsumption of cue vet over note frontmatter.)
+func TestValidateNormalizesParsedDate(t *testing.T) {
+	s, err := Load("testdata/notes.template.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fm := map[string]any{
+		"date":   time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC),
+		"author": "agent",
+		"slug":   "dated-note",
+	}
+	if vs := s.Validate(fm); len(vs) != 0 {
+		t.Errorf("a parsed date should validate against a YYYY-MM-DD string schema, got %#v", vs)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
@@ -94,7 +95,7 @@ type Violation struct {
 // when valid, or one Violation per failed rule.
 func (s *Schema) Validate(fm map[string]any) []Violation {
 	out := []Violation{}
-	data := s.ctx.Encode(fm)
+	data := s.ctx.Encode(normalizeTimes(fm))
 	if data.Err() != nil {
 		return []Violation{{Field: "", Message: "cannot encode frontmatter: " + data.Err().Error()}}
 	}
@@ -112,6 +113,35 @@ func (s *Schema) Validate(fm map[string]any) []Violation {
 		}
 	}
 	return out
+}
+
+// normalizeTimes deep-copies v, converting any time.Time to the string form a
+// YAML author would have written: "2006-01-02" for a midnight-UTC value (a bare
+// date), else RFC3339. yaml.v3 parses unquoted timestamps into time.Time, which
+// ctx.Encode would otherwise render as RFC3339 — diverging from how `cue vet`
+// (whose YAML decoder keeps timestamps as strings) sees the same frontmatter.
+func normalizeTimes(v any) any {
+	switch t := v.(type) {
+	case time.Time:
+		if t.Hour() == 0 && t.Minute() == 0 && t.Second() == 0 && t.Nanosecond() == 0 && t.Location() == time.UTC {
+			return t.Format("2006-01-02")
+		}
+		return t.Format(time.RFC3339)
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, val := range t {
+			out[k] = normalizeTimes(val)
+		}
+		return out
+	case []any:
+		out := make([]any, len(t))
+		for i, val := range t {
+			out[i] = normalizeTimes(val)
+		}
+		return out
+	default:
+		return v
+	}
 }
 
 // EdgeFields returns the frontmatter fields marked with @edge, sorted by name.
