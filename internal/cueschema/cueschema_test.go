@@ -41,3 +41,20 @@ func TestLoadCompileError(t *testing.T) {
 		t.Error("expected error loading missing file")
 	}
 }
+
+// A schema may live in a ```cue fenced block inside a markdown template
+// (agent-resources keeps schemas in *.cue.template.md). Load must extract it.
+func TestLoadExtractsCueFromMarkdown(t *testing.T) {
+	s, err := Load("testdata/notes.template.md")
+	if err != nil {
+		t.Fatalf("load markdown template: %v", err)
+	}
+	valid := map[string]any{"date": "2026-06-30", "author": "agent", "slug": "ok-slug"}
+	if vs := s.Validate(valid); len(vs) != 0 {
+		t.Errorf("valid frontmatter should pass, got %#v", vs)
+	}
+	bad := map[string]any{"date": "nope", "author": "agent", "slug": "ok-slug"}
+	if vs := s.Validate(bad); len(vs) == 0 {
+		t.Error("bad date should fail the extracted schema")
+	}
+}

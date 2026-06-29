@@ -23,11 +23,17 @@ type Schema struct {
 	value cue.Value
 }
 
-// Load compiles a .tfq.cue file.
+// Load compiles a CUE schema file. The file may be raw CUE (e.g. .tfq.cue) or a
+// markdown document whose first ```cue fenced block holds the schema (the
+// agent-resources *.cue.template.md convention) — in that case only the block
+// is compiled.
 func Load(path string) (*Schema, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
+	}
+	if block, ok := extractCueBlock(b); ok {
+		b = block
 	}
 	ctx := cuecontext.New()
 	v := ctx.CompileBytes(b)
@@ -35,6 +41,28 @@ func Load(path string) (*Schema, error) {
 		return nil, v.Err()
 	}
 	return &Schema{ctx: ctx, value: v}, nil
+}
+
+// extractCueBlock returns the contents of the first ```cue ... ``` fenced block,
+// or (nil, false) if the source has no such fence (treat as raw CUE).
+func extractCueBlock(src []byte) ([]byte, bool) {
+	lines := strings.Split(string(src), "\n")
+	start := -1
+	for i, ln := range lines {
+		if strings.TrimSpace(ln) == "```cue" {
+			start = i + 1
+			break
+		}
+	}
+	if start == -1 {
+		return nil, false
+	}
+	for i := start; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "```" {
+			return []byte(strings.Join(lines[start:i], "\n")), true
+		}
+	}
+	return nil, false
 }
 
 // Find walks up from startDir returning the first .tfq.cue path found.
