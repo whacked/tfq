@@ -113,3 +113,13 @@ func TestParseInAndTypes(t *testing.T) {
 		t.Errorf("--types mode = %v", inv.Mode)
 	}
 }
+
+func TestParseSchema(t *testing.T) {
+	inv, err := parse([]string{"--validate", "note.md", "--schema", "tpl.cue"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.Mode != ModeValidate || inv.Selector != "note.md" || inv.Schema != "tpl.cue" {
+		t.Errorf("got mode=%v selector=%q schema=%q", inv.Mode, inv.Selector, inv.Schema)
+	}
+}

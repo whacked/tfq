@@ -51,6 +51,7 @@ type Invocation struct {
 	Outbound bool
 
 	Strict bool
+	Schema string // explicit schema path for --validate (.cue or markdown ```cue)
 	Color  string // auto | always | never
 
 	Fields map[string]string
@@ -304,6 +305,12 @@ func parse(raw []string) (Invocation, error) {
 		// validate
 		case "strict":
 			inv.Strict = true
+		case "schema":
+			v, err := needVal()
+			if err != nil {
+				return inv, err
+			}
+			inv.Schema = v
 		// color
 		case "color":
 			v, err := needVal()

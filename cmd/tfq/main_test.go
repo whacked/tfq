@@ -180,6 +180,25 @@ func TestRunInNarrowing(t *testing.T) {
 	}
 }
 
+func TestRunValidateFileAgainstSchema(t *testing.T) {
+	dir := t.TempDir()
+	// schema lives in a markdown template, like agent-resources' *.cue.template.md
+	mustWrite(t, dir, "notes.tpl.md", "```cue\ndate: string & =~\"^[0-9]{4}-[0-9]{2}-[0-9]{2}$\"\nslug: string & =~\"^[a-z0-9-]+$\"\n```\n")
+	mustWrite(t, dir, "ok.md", "---\ndate: 2026-06-30\nslug: good-note\n---\n# ok\n")
+	mustWrite(t, dir, "bad.md", "---\ndate: nope\nslug: Bad\n---\n# bad\n")
+
+	tpl := filepath.Join(dir, "notes.tpl.md")
+	ok := filepath.Join(dir, "ok.md")
+	bad := filepath.Join(dir, "bad.md")
+
+	if out, code := run([]string{"--validate", ok, "--schema", tpl}); code != 0 {
+		t.Errorf("valid file should exit 0, got %d\n%s", code, out)
+	}
+	if _, code := run([]string{"--validate", bad, "--schema", tpl}); code != 1 {
+		t.Errorf("invalid file should exit 1, got %d", code)
+	}
+}
+
 func TestRunTypesAndNewType(t *testing.T) {
 	dir := t.TempDir()
 	if _, code := run([]string{"--root", dir, "--new", "job", "--type", "task"}); code != 0 {

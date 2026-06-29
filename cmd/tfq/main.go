@@ -263,7 +263,16 @@ func runEnv(args []string, isTTY, noColor bool) (string, int) {
 		return formatWrite(res, pal), 0
 
 	case ModeValidate:
-		rep, verr := validate.Run(root, inv.Strict)
+		// A selector names a single file to validate against --schema (or the
+		// discovered .tfq.cue) with cue vet semantics; no selector validates the
+		// whole collection.
+		var rep validate.Report
+		var verr error
+		if inv.Selector != "" {
+			rep, verr = validate.File(inv.Selector, inv.Schema)
+		} else {
+			rep, verr = validate.RunWith(root, inv.Strict, inv.Schema)
+		}
 		if verr != nil {
 			return errln(verr), 1
 		}
@@ -429,7 +438,7 @@ func usage() string {
 		"  --new SLUG                create record (--type, --tag, --status, --field)",
 		"  --set REF                 update record (--status, --tag, --field)",
 		"  --done REF                mark task done",
-		"  --validate                validate collection (--strict)",
+		"  --validate [FILE]         validate collection, or one FILE (--strict, --schema PATH)",
 		"  --inspect FILE            FileVitals for one file",
 		"  --graph                   all resolved edges",
 		"  --version  --help",
