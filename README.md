@@ -3,13 +3,15 @@
 `tfq` (text-file query) is a single Go binary that treats a directory of
 frontmatter'd text files (Markdown, Org, …) as **records forming a typed graph**,
 and exposes read + write + validate over them. No index, no services; search is
-ripgrep over plaintext. It replaces the durable parts of `ov` (notes) and
-`taskmd` (tasks).
+ripgrep over plaintext. One binary supersedes `ov` (notes — index-free),
+`taskmd` (tasks + dependency graph), and `cue` (frontmatter validation, via the
+bundled cuelang library). Semantic search (`ck`) is out of scope.
 
 ```bash
 make build      # -> ./tfq (version injected)
 make test       # go test ./...
-./tfq --help
+./tfq --help        # short flag reference
+./tfq --examples    # extended agent guide: mental model + worked examples
 ```
 
 ## Using tfq
@@ -25,17 +27,20 @@ tfq --status pending            # list records (empty selector + filter)
 tfq --show battery-spec         # one record (--raw / --frontmatter)
 tfq --links battery-spec        # outbound + inbound (--inbound/--outbound)
 tfq --next                      # tasks whose deps are satisfied
-tfq --new idea --type note --tag x   # create; --task = --new --type task
+tfq --task --title "Audit vendors" --priority high --depends-on 001,002
 tfq --set idea --status done    # mutate frontmatter (--done is a shortcut)
 tfq --tags / --types            # tag and frontmatter-type indexes
-tfq --validate [--strict]       # check vs .tfq.cue
+tfq --validate note.md --schema notes.cue.template.md   # one file, cue vet semantics
+tfq --validate [--strict]       # whole collection vs discovered .tfq.cue
 ```
 
 | Group | Flags |
 |---|---|
-| Modes | *(search)* `--list --show --links --tags --types --next --new --set --done --validate --inspect --graph --version --help` |
+| Modes | *(search)* `--list --show --links --tags --types --next --new --set --done --validate --inspect --graph --version --help --examples` |
 | Filters | `--type T` (frontmatter `type:`) · `--tag T`× · `--status S` · `--limit N` |
+| Task fields (`--new`/`--set`) | `--title T` (auto-slugs) · `--priority P` · `--effort E` · `--parent REF` · `--depends-on REF[,REF]` · `--field k=v` |
 | Search | `-i` · `-l` · `-c` · `--heading/--no-heading` · `--in heading\|tag\|link` |
+| Validate | `--strict` · `--schema PATH` (`.cue` or a markdown ```` ```cue ```` block; with a FILE selector validates one file) |
 | Root | `--root DIR` → `$TFQ_ROOT` → ancestor `.tfq.cue/.tfq.yaml/.tfq/` → cwd |
 | Output | `--json` · `--color auto\|always\|never` / `--no-color` (honors `NO_COLOR`) · `-e/--query` · `--` |
 
@@ -73,4 +78,6 @@ is not done. No third-party CLI framework.
 
 **Method:** TDD, one commit per task. Design specs and TDD plans (the deepest
 record of *what* and *why*) live in `docs/superpowers/specs/` and
-`docs/superpowers/plans/`.
+`docs/superpowers/plans/`. To wire tfq into agent-resources (replacing
+`ov`/`taskmd`/`cue`), see
+[`docs/agent-guides/superseding-ov-taskmd-cue.md`](docs/agent-guides/superseding-ov-taskmd-cue.md).
