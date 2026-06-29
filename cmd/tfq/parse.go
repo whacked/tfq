@@ -51,9 +51,10 @@ type Invocation struct {
 	Inbound  bool
 	Outbound bool
 
-	Strict bool
-	Schema string // explicit schema path for --validate (.cue or markdown ```cue)
-	Color  string // auto | always | never
+	Strict  bool
+	Schema  string // explicit schema path for --validate (.cue or markdown ```cue)
+	Verbose bool   // --help --verbose / --examples → extended agent help
+	Color   string // auto | always | never
 
 	Fields map[string]string
 }
@@ -196,6 +197,13 @@ func parse(raw []string) (Invocation, error) {
 			if err := setMode(ModeHelp, name); err != nil {
 				return inv, err
 			}
+		case "examples":
+			if err := setMode(ModeHelp, name); err != nil {
+				return inv, err
+			}
+			inv.Verbose = true
+		case "verbose":
+			inv.Verbose = true
 		// mode aliases
 		case "done":
 			if err := setMode(ModeSet, name); err != nil {

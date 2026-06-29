@@ -51,6 +51,9 @@ func runEnv(args []string, isTTY, noColor bool) (string, int) {
 
 	switch inv.Mode {
 	case ModeHelp:
+		if inv.Verbose {
+			return extendedHelp(), 0
+		}
 		return usage(), 0
 	case ModeVersion:
 		return version, 0
@@ -462,6 +465,8 @@ func usage() string {
 		"Root:     --root DIR   (else $TFQ_ROOT, then nearest ancestor with",
 		"          .tfq.cue/.tfq.yaml/.tfq/, then the current directory)",
 		"Output:   --json   --color auto|always|never   --no-color   -e/--query PATTERN",
+		"",
+		"Extended agent help (mental model, querying funnel, worked examples):  tfq --examples",
 	}, "\n")
 }
 
