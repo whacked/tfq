@@ -1,0 +1,32 @@
+name: nix
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: nix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flake:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Flakes-enabled Nix; substitutes from cache.nixos.org cover go/ripgrep.
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      # Builds packages.default (runs `go test ./...` via the buildGoModule
+      # check phase) and realizes devShells.default — for this runner's system.
+      - run: nix flake check -L
+
+      # The runnable artifact `nix run`/`nix profile install` resolve to.
+      - run: nix build -L .#
