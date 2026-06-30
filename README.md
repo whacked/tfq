@@ -14,6 +14,28 @@ make test       # go test ./...
 ./tfq --examples    # extended agent guide: mental model + worked examples
 ```
 
+## Install / run with Nix
+
+A flake is provided; it bundles `ripgrep`, so search works out of the box.
+
+```bash
+nix run github:whacked/tfq -- --help        # run without installing
+nix run github:whacked/tfq -- battery --in heading
+nix profile install github:whacked/tfq      # install `tfq` onto PATH
+nix build github:whacked/tfq                # -> ./result/bin/tfq
+```
+
+Dev shell (`go`, `nodejs`, `pkg-config`, shortcuts) — both entry points give the
+same environment, defined once in `flake.nix`:
+
+```bash
+nix develop     # flakes
+nix-shell       # non-flake; shell.nix is a flake-compat shim onto the flake
+```
+
+Flake builds derive the version from flake metadata
+(`yyyymmdd.<shortRev>`); `make build` keeps the fuller git-derived string.
+
 ## Using tfq
 
 Grep-like: the non-flag tokens are a **selector**; flags do the rest. Default

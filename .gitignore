@@ -8,6 +8,9 @@
 *.out
 coverage.*
 
+# Nix build output symlink
+/result
+
 # OS / editor cruft
 .DS_Store
 *.swp
